@@ -27,6 +27,11 @@ public class TheCatApiUtil {
     private static final Gson GSON = new Gson();
 
     /**
+     * Minimal amount of cats returned
+     */
+    public static final int MIN_CATS_PER_REQUEST = 1, MAX_CATS_PER_REQUEST = 100;
+
+    /**
      * Endpoint for HTTP-request for getting random cat images
      */
     public static final URI RANDOM_CAT_IMAGE_REQUEST_ENDPOINT
