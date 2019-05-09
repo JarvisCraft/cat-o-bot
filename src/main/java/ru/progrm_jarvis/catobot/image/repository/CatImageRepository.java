@@ -1,5 +1,7 @@
 package ru.progrm_jarvis.catobot.image.repository;
 
+import ru.progrm_jarvis.catobot.image.CatImage;
+
 import java.util.Optional;
 import java.util.concurrent.Future;
 
@@ -9,7 +11,7 @@ import java.util.concurrent.Future;
  * @param <I> type of cat images stored
  * @param <C> type of configuration required to work with cat images or {@link Void} if none is expected
  */
-public interface CatImageRepository<I, C> {
+public interface CatImageRepository<I extends CatImage, C> {
 
     /**
      * Packs a random cat image from this repository.
