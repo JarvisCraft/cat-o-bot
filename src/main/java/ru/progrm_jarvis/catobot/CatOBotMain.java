@@ -18,16 +18,16 @@ import ru.progrm_jarvis.catobot.image.CatImage;
 import ru.progrm_jarvis.catobot.image.TheCatApiCatImage;
 import ru.progrm_jarvis.catobot.image.factory.TheCatApiCatImageFactory;
 import ru.progrm_jarvis.catobot.image.repository.CatImageRepository;
-import ru.progrm_jarvis.catobot.image.repository.NonCachingImageRepository;
-import ru.progrm_jarvis.catobot.vk.VkCatsManager;
+import ru.progrm_jarvis.catobot.image.repository.PreLoadingCatImageRepository;
 import ru.progrm_jarvis.catobot.vk.SimpleVkCatsManager;
+import ru.progrm_jarvis.catobot.vk.VkCatsManager;
 
-import javax.net.ssl.SSLContext;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.security.NoSuchAlgorithmException;
-import java.util.*;
+import java.util.List;
+import java.util.Optional;
+import java.util.Scanner;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -43,7 +43,7 @@ import static java.lang.Math.min;
 @FieldDefaults(level = AccessLevel.PROTECTED, makeFinal = true)
 public class CatOBotMain {
 
-    protected static final Gson GSON = new GsonBuilder()
+    protected static final Gson PRETTY_GSON = new GsonBuilder()
                 .setPrettyPrinting()
                 .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_DASHES)
                 .create();
@@ -59,34 +59,24 @@ public class CatOBotMain {
     public CatOBotMain() throws IOException {
         log.info("Loading config");
         val config = loadConfig(new File("config.json"));
-        log.info("Config loaded");
+        log.info("Config loaded:\n{}", PRETTY_GSON.toJson(config));
 
         senderWorkers = createExecutorService(config.getSenderWorkers());
 
-        log.info("Initializing HTTP(S) client");
-        val httpClientBuilder = HttpClients.custom();
-        if (config.isUseSsl()) {
-            log.info("Trying to configure SSL");
-            try {
-                httpClientBuilder
-                        .setSSLContext(SSLContext.getDefault());
-            } catch (final NoSuchAlgorithmException e) {
-                log.warn("Unable to get default SSL context, aborting", e);
-                System.exit(1);
-            }
-        }
+        log.info("Initializing cat images repository...");
+        catImages = new PreLoadingCatImageRepository<>(
+                new TheCatApiCatImageFactory(
+                        config.getTheCatApiConfig(), HttpClients.createDefault(),
+                        createExecutorService(config.getImageFactoryWorkers())
+                ), null, config.getPreloadedImagesCacheSize(), config.getPreloadInterval());
+        log.info("Initialized cat images repository: {}", catImages);
 
-        try (val httpClient = httpClientBuilder.build()) {
-            log.info("Created HTTP(S) client successfully");
-
-            catImages = new NonCachingImageRepository<>(new TheCatApiCatImageFactory(
-                    config.theCatApiConfig, HttpClients.createDefault(), createExecutorService(config.getImageFactoryWorkers())
-            ));
-        }
+        log.info("Initializing VK-manager...");
         vk =  new SimpleVkCatsManager(
-                config.vkApiConfig, createExecutorService(config.getVkApiWorkers()),
+                config.getVkApiConfig(), createExecutorService(config.getVkApiWorkers()),
                 new LongPollEventListener(config.createMessageToCatImagesCountFunction())
         );
+        log.info("Initialized VK-manager: {}", vk);
         vk.startLongPolling();
 
         shutdown = new AtomicBoolean(false);
@@ -158,7 +148,7 @@ public class CatOBotMain {
 
     protected Config loadConfig(@NonNull final File file) throws IOException {
         if (file.isFile()) try (val reader = Files.newBufferedReader(file.toPath())) {
-            return GSON.fromJson(reader, Config.class);
+            return PRETTY_GSON.fromJson(reader, Config.class);
         } else {
             {
                 val parent = file.getParentFile();
@@ -166,7 +156,7 @@ public class CatOBotMain {
             }
             val config = new Config();
             try (val writer = Files.newBufferedWriter(file.toPath())) {
-                GSON.toJson(config, writer);
+                PRETTY_GSON.toJson(config, writer);
             }
 
             return config;
@@ -209,7 +199,8 @@ public class CatOBotMain {
         private static final byte MAX_CAT_COUNT_DECIMAL_DIGITS = 3;
 
         boolean useSsl;
-        int senderWorkers, imageFactoryWorkers, vkApiWorkers;
+        @Builder.Default int senderWorkers = 0, imageFactoryWorkers = 0, vkApiWorkers = 0,
+                preloadedImagesCacheSize = 100, preloadInterval = 1_000_000;
         @SerializedName("the-cat-api") @Builder.Default @NonNull TheCatApiCatImageFactory.Configuration theCatApiConfig
                 = TheCatApiCatImageFactory.Configuration.builder().build();
         @SerializedName("vk-api") @Builder.Default @NonNull SimpleVkCatsManager.Configuration vkApiConfig
