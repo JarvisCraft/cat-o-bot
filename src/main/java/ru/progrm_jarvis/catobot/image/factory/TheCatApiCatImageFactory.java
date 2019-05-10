@@ -2,6 +2,7 @@ package ru.progrm_jarvis.catobot.image.factory;
 
 import lombok.*;
 import lombok.experimental.FieldDefaults;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
@@ -29,6 +30,7 @@ import static java.util.Optional.empty;
 /**
  * Cat image factory based on TheCatApi.
  */
+@Slf4j
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PROTECTED, makeFinal = true)
 public class TheCatApiCatImageFactory
@@ -99,6 +101,7 @@ public class TheCatApiCatImageFactory
                 });
 
                 val length = images.length;
+                log.debug("Loaded {} cat images: {}", length, images);
                 switch (length) {
                     case 0: return empty();
                     case 1: return Optional.of(images[0]);
