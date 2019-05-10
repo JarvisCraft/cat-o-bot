@@ -202,8 +202,8 @@ public class SimpleVkCatsManager implements VkCatsManager {
     @AllArgsConstructor
     public static class Configuration {
 
-        int groupId, /*userId, */albumId;
-        @NonNull String groupToken/*, userToken*/;
+        int groupId;
+        @NonNull String groupToken;
         @Builder.Default @NonNull Messages messages = new Messages();
 
         @Data
