@@ -19,7 +19,7 @@ public interface CatImageRepository<I extends CatImage, C> extends AutoCloseable
      * @param configuration configurations used to get a cat image
      * @return future returning {@link Optional} which should contain a cat image or be empty if something goes wrong
      */
-    Future<Optional<I>> pickRandomCatImage(final C configuration);
+    Future<Optional<I>> pickRandomCatImage(C configuration);
 
     @Override
     default void close() {}
