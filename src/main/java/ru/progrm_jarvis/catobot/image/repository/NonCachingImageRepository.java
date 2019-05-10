@@ -29,4 +29,9 @@ public class NonCachingImageRepository<I extends CatImage, C> implements CatImag
     public Future<Optional<I>> pickRandomCatImage(final C configuration) {
         return factory.createCatImage(configuration);
     }
+
+    @Override
+    public void close() {
+        factory.close();
+    }
 }

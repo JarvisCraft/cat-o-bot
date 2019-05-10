@@ -11,7 +11,7 @@ import java.util.concurrent.Future;
  * @param <I> type of cat images stored
  * @param <C> type of configuration required to work with cat images or {@link Void} if none is expected
  */
-public interface CatImageRepository<I extends CatImage, C> {
+public interface CatImageRepository<I extends CatImage, C> extends AutoCloseable {
 
     /**
      * Packs a random cat image from this repository.
@@ -20,4 +20,7 @@ public interface CatImageRepository<I extends CatImage, C> {
      * @return future returning {@link Optional} which should contain a cat image or be empty if something goes wrong
      */
     Future<Optional<I>> pickRandomCatImage(final C configuration);
+
+    @Override
+    default void close() {}
 }
