@@ -280,7 +280,7 @@ public class CatOBotMain {
 
                     if (images.length == 0) vk.sendCatsUnavailable(message.getPeerId());
                     else vk.sendCatImages(message.getPeerId(), images);
-                } catch (final RuntimeException | ClientException | ApiException e) {
+                } catch (final RuntimeException | ClientException | ApiException | IOException e) {
                     log.error("An exception occurred while trying to respond to " + message, e);
                 }
             });
