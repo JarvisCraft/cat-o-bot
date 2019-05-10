@@ -1,0 +1,4 @@
+language: java
+# Test against JDK 8
+jdk:
+  - openjdk8
