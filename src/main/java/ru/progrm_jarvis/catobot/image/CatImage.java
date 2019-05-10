@@ -19,5 +19,5 @@ public interface CatImage {
      *
      * @return type of this image
      */
-    String getType();
+    @NotNull String getType();
 }

@@ -7,7 +7,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collection;
-import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
@@ -32,15 +31,30 @@ public class TheCatApiCatImage implements CatImage {
     @NonNull @Singular Collection<Breed> breeds;
     @NonNull @Singular Collection<Category> categories;
 
+    @NonNull @ToString.Exclude protected final transient Object imageMutex = new Object[0];
     /**
      * Image bytes of a cat initialized lazily using {@link #imageFactory}
      */
-    @Nullable @Getter(lazy = true) private final transient byte[] image = Objects.requireNonNull(imageFactory, "imageFactory has not been initialized").get();
+    @Nullable @ToString.Exclude protected transient volatile byte[] image;
 
     /**
      * Type of the image computed from the url's ending extension
      */
     @Nullable @Getter(lazy = true) private final String type = url.substring(url.lastIndexOf('.') + 1);
+
+    @Override
+    @NotNull public byte[] getImage() {
+        if (image == null) synchronized (imageMutex) {
+            if (image == null) {
+                if (imageFactory == null) throw new IllegalStateException("imageFactory is not initialized");
+
+                image = imageFactory.get();
+            }
+        }
+
+        //noinspection ConstantConditions
+        return image;
+    }
 
     /**
      * Cat's <a href="https://docs.thecatapi.com/api-reference/models/category">category</a>.
