@@ -152,10 +152,11 @@ public class SimpleVkCatsManager implements VkCatsManager {
 
         val script = new StringBuilder("var a;");
         for (var i = 0; i < images.length; i++) {
+            val image = images[i];
             //val tempFile = File.createTempFile("catobot_temp_img", null);
-            val tempFile = new File("catimg.png");
+            val tempFile = File.createTempFile("tmp_cat_img", '.' + image.getType());
             tempFile.deleteOnExit();
-            Files.write(tempFile.toPath(), images[i].getImage());
+            Files.write(tempFile.toPath(), image.getImage());
 
             // upload the image
             val upload = vk.upload().photoMessage(photoUploadUrl.toString(), tempFile).execute();
