@@ -5,6 +5,8 @@ import com.vk.api.sdk.exceptions.ClientException;
 import lombok.NonNull;
 import ru.progrm_jarvis.catobot.image.CatImage;
 
+import java.io.IOException;
+
 public interface VkCatsManager extends AutoCloseable {
     void startLongPolling();
 
@@ -12,5 +14,5 @@ public interface VkCatsManager extends AutoCloseable {
 
     void sendCatsUnavailable(int peerId);
 
-    void sendCatImages(int peerId, @NonNull CatImage... images) throws ClientException, ApiException;
+    void sendCatImages(int peerId, @NonNull CatImage... images) throws IOException, ClientException, ApiException;
 }

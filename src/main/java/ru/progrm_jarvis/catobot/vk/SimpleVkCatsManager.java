@@ -143,9 +143,8 @@ public class SimpleVkCatsManager implements VkCatsManager {
      * @throws ApiException if an exception occurs while using VK-API
      */
     @Override
-    @SneakyThrows(IOException.class)
     public void sendCatImages(final int peerId, @NonNull final CatImage... images)
-            throws ClientException, ApiException {
+            throws IOException, ClientException, ApiException {
         val photoUploadUrl = vk.photos().getMessagesUploadServer(groupActor)
                 .peerId(peerId)
                 .execute()
