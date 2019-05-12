@@ -13,6 +13,7 @@ import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.logging.log4j.core.util.JsonUtils;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import ru.progrm_jarvis.catobot.image.CatImage;
 import ru.progrm_jarvis.catobot.util.CollectionUtil;
 
@@ -116,14 +117,16 @@ public class SimpleVkCatsManager implements VkCatsManager {
     }
 
     @Override
-    public void sendCatsUnavailable(final int peerId) {
+    public void sendCatsUnavailable(final int peerId, @Nullable final Integer repliedMessageId) {
         CollectionUtil.getRandom(configuration.getMessages().getCatsUnavailable()).ifPresent(
                 message -> {
                     try {
-                        vk.messages().send(groupActor)
+                        val request = vk.messages().send(groupActor)
                                 .peerId(peerId)
-                                .message(message)
-                                .execute();
+                                .message(message);
+                        if (repliedMessageId != null) request.replyTo(repliedMessageId);
+
+                        request.execute();
                     } catch (final ClientException | ApiException e) {
                         throw new RuntimeException(
                                 "An exception occurred while trying to send cats unavailability message", e
@@ -138,12 +141,15 @@ public class SimpleVkCatsManager implements VkCatsManager {
      * Sends cat images to the specified peer.
      *
      * @param peerId receiver of the message
+     * @param repliedMessageId ID of a message which this one replies to
      * @param images cat images to send
      * @throws ClientException if an exception occurs while performing the request
      * @throws ApiException if an exception occurs while using VK-API
      */
     @Override
-    public void sendCatImages(final int peerId, @NonNull final CatImage... images)
+    public void sendCatImages(final int peerId,
+                              @Nullable final Integer repliedMessageId,
+                              @NonNull final CatImage... images)
             throws IOException, ClientException, ApiException {
         val photoUploadUrl = vk.photos().getMessagesUploadServer(groupActor)
                 .peerId(peerId)
@@ -182,6 +188,7 @@ public class SimpleVkCatsManager implements VkCatsManager {
             JsonUtils.quoteAsString(message, script); // TODO use of other dependency
             script.append('"');
         });
+        if (repliedMessageId != null) script.append(",\"reply_to\":").append(repliedMessageId);
 
         script.append("});");
 

@@ -270,8 +270,8 @@ public class CatOBotMain {
                             })
                             .toArray(CatImage[]::new);
 
-                    if (images.length == 0) vk.sendCatsUnavailable(message.getPeerId());
-                    else vk.sendCatImages(message.getPeerId(), images);
+                    if (images.length == 0) vk.sendCatsUnavailable(message.getPeerId(), message.getId());
+                    else vk.sendCatImages(message.getPeerId(), message.getId(), images);
                 } catch (final RuntimeException | ClientException | ApiException | IOException e) {
                     log.error("An exception occurred while trying to respond to " + message, e);
                 }
