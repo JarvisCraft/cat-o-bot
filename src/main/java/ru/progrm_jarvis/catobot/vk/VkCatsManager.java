@@ -40,6 +40,6 @@ public interface VkCatsManager extends AutoCloseable {
      * @throws ClientException if an exception occurs while performing the request
      * @throws ApiException if an exception occurs while using VK-API
      */
-    void sendCatImages(int peerId, @Nullable Integer repliedMessageId,
-                       @NonNull CatImage... images) throws IOException, ClientException, ApiException;
+    void sendCatImages(int peerId, @Nullable Integer repliedMessageId, @NonNull CatImage... images)
+            throws IOException, ClientException, ApiException;
 }
