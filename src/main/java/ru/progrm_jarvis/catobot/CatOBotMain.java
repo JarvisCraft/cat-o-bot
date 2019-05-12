@@ -229,9 +229,10 @@ public class CatOBotMain {
             log.debug("Created pattern `" + numberedPattern + "` for matching numbered cat requests");
 
             return message -> {
-                var matcher = generalPattern.matcher(message.getText());
+                val text = message.getText().toLowerCase();
+                var matcher = generalPattern.matcher(text);
                 if (matcher.find()) {
-                    matcher = numberedPattern.matcher(message.getText());
+                    matcher = numberedPattern.matcher(text);
                     if (matcher.find()) return max(1, min(maxImages, Integer.parseInt(matcher.group(1))));
                     return 1;
                 }
