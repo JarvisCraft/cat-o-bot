@@ -61,9 +61,6 @@ public class SimpleVkCatsManager implements VkCatsManager {
         return vk.groups().getLongPollServer(groupActor, configuration.getGroupId()).execute();
     }
 
-    /**
-     * Stars long-polling session if it has not been started yet.
-     */
     @Override
     public void startLongPolling() {
         if (longPollingSession.compareAndSet(false, true)) {
@@ -108,9 +105,6 @@ public class SimpleVkCatsManager implements VkCatsManager {
         }
     }
 
-    /**
-     * Uninterruptedly stops long-polling session.
-     */
     @Override
     public void stopLongPolling() {
         longPollingSession.set(false);
@@ -137,15 +131,6 @@ public class SimpleVkCatsManager implements VkCatsManager {
 
     }
 
-    /**
-     * Sends cat images to the specified peer.
-     *
-     * @param peerId receiver of the message
-     * @param repliedMessageId ID of a message which this one replies to
-     * @param images cat images to send
-     * @throws ClientException if an exception occurs while performing the request
-     * @throws ApiException if an exception occurs while using VK-API
-     */
     @Override
     public void sendCatImages(final int peerId,
                               @Nullable final Integer repliedMessageId,
