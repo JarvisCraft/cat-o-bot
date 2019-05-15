@@ -21,7 +21,6 @@ import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 
 import static java.lang.Math.max;
 import static java.lang.Math.min;
@@ -57,7 +56,8 @@ public class TheCatApiCatImageFactory
     @NonNull Queue<TheCatApiCatImage> loadedImages = new ConcurrentLinkedDeque<>();
 
     @Override
-    @NotNull public Future<Optional<TheCatApiCatImage>> createCatImage(@Nullable final Configuration configuration) {
+    @NotNull public CompletableFuture<Optional<TheCatApiCatImage>> createCatImage(
+            @Nullable final Configuration configuration) {
         val config = configuration == null ? defaultConfiguration : configuration;
         return CompletableFuture.supplyAsync(() -> {
             val nextImage = loadedImages.poll();

@@ -12,10 +12,7 @@ import ru.progrm_jarvis.catobot.image.factory.CatImageFactory;
 import java.lang.ref.SoftReference;
 import java.util.Deque;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentLinkedDeque;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 
 @Slf4j
 @FieldDefaults(level = AccessLevel.PROTECTED, makeFinal = true)
@@ -27,7 +24,7 @@ public class PreLoadingCatImageRepository<I extends CatImage, C> implements CatI
 
     long interval;
 
-    @NonNull Deque<SoftReference<Future<Optional<I>>>> cache;
+    @NonNull Deque<SoftReference<CompletableFuture<Optional<I>>>> cache;
 
     @NonNull ExecutorService worker;
 
@@ -62,7 +59,7 @@ public class PreLoadingCatImageRepository<I extends CatImage, C> implements CatI
     }
 
     @Override
-    public Future<Optional<I>> pickRandomCatImage(final C configuration) {
+    public CompletableFuture<Optional<I>> pickRandomCatImage(final C configuration) {
         val imageReference = cache.poll();
         if (imageReference == null) return factory.createCatImage(configuration);
 

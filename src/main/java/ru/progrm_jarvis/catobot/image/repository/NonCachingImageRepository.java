@@ -8,7 +8,7 @@ import ru.progrm_jarvis.catobot.image.CatImage;
 import ru.progrm_jarvis.catobot.image.factory.CatImageFactory;
 
 import java.util.Optional;
-import java.util.concurrent.Future;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Cat image repository which does not cache images and simply delegated all job to its factory.
@@ -26,7 +26,7 @@ public class NonCachingImageRepository<I extends CatImage, C> implements CatImag
     @NonNull CatImageFactory<I, C> factory;
 
     @Override
-    public Future<Optional<I>> pickRandomCatImage(final C configuration) {
+    public CompletableFuture<Optional<I>> pickRandomCatImage(final C configuration) {
         return factory.createCatImage(configuration);
     }
 
