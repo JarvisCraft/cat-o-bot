@@ -12,7 +12,10 @@ import ru.progrm_jarvis.catobot.image.factory.CatImageFactory;
 import java.lang.ref.SoftReference;
 import java.util.Deque;
 import java.util.Optional;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Slf4j
 @FieldDefaults(level = AccessLevel.PROTECTED, makeFinal = true)
