@@ -6,11 +6,11 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class CatOBotMainTest {
+class CatOBotCliTest {
 
     @Test
     void testConfigMessageToCatImagesCountFunction() {
-        val function = CatOBotMain.Config
+        val function = CatOBotCli.Config
                 .builder()
                 .catAlias("cat")
                 .catAlias("kitty")

@@ -89,7 +89,7 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <mainClass>ru.progrm_jarvis.catobot.CatOBotMain</mainClass>
+                            <mainClass>ru.progrm_jarvis.catobot.CatOBotBootstrap</mainClass>
                         </manifest>
                     </archive>
                 </configuration>

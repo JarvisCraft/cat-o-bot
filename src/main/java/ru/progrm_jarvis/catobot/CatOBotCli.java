@@ -3,6 +3,7 @@ package ru.progrm_jarvis.catobot;
 import com.google.gson.FieldNamingPolicy;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import com.google.gson.annotations.SerializedName;
 import com.vk.api.sdk.callback.CallbackApi;
 import com.vk.api.sdk.exceptions.ApiException;
@@ -11,9 +12,11 @@ import com.vk.api.sdk.objects.messages.Message;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.io.FilenameUtils;
 import org.apache.http.impl.client.HttpClients;
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.core.config.Configurator;
+import org.slf4j.LoggerFactory;
+import ru.progrm_jarvis.catobot.ai.Recognizer;
+import ru.progrm_jarvis.catobot.ai.WitAiRecognizer;
 import ru.progrm_jarvis.catobot.image.CatImage;
 import ru.progrm_jarvis.catobot.image.TheCatApiCatImage;
 import ru.progrm_jarvis.catobot.image.factory.TheCatApiCatImageFactory;
@@ -22,7 +25,11 @@ import ru.progrm_jarvis.catobot.image.repository.PreLoadingCatImageRepository;
 import ru.progrm_jarvis.catobot.vk.SimpleVkCatsManager;
 import ru.progrm_jarvis.catobot.vk.VkCatsManager;
 
+import javax.script.ScriptEngineManager;
+import javax.script.ScriptException;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
@@ -41,25 +48,57 @@ import static java.lang.Math.min;
 
 @Slf4j
 @FieldDefaults(level = AccessLevel.PROTECTED, makeFinal = true)
-public class CatOBotMain {
+public class CatOBotCli implements CatOBot {
 
-    protected static final Gson PRETTY_GSON = new GsonBuilder()
-                .setPrettyPrinting()
-                .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_DASHES)
-                .create();
+    protected static final Gson CONFIG_GSON = new GsonBuilder()
+            .setPrettyPrinting()
+            .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_DASHES)
+            .create();
 
     @NonNull ExecutorService senderWorkers;
-    @NonNull CatImageRepository<TheCatApiCatImage, TheCatApiCatImageFactory.Configuration> catImages;
-    @NonNull VkCatsManager vk;
+    @NonNull @Getter CatImageRepository<TheCatApiCatImage, TheCatApiCatImageFactory.Configuration> catImages;
+    @NonNull @Getter VkCatsManager vk;
+    @NonNull @Getter Recognizer recognizer;
 
     @NonNull AtomicBoolean shutdown;
 
     @Getter protected final Thread shutdownHook;
 
-    public CatOBotMain() throws IOException {
+    public CatOBotCli() throws BotInitializationException {
         log.info("Loading config");
-        val config = loadConfig(new File("config.json"));
-        log.info("Config loaded:\n{}", PRETTY_GSON.toJson(config));
+        final Config config;
+        try {
+            config = loadConfig(new File("config.json"));
+        } catch (final IOException e) {
+            throw new BotInitializationException("Unable to load bot config", e);
+        }
+        log.info("Config loaded:\n{}", CONFIG_GSON.toJson(config));
+
+        final Function<CatOBot, CallbackApi> vkCallbackHandlerFactory;
+        {
+            val vkHandlerFile = config.getVkHandlerFile();
+
+            val engine = new ScriptEngineManager()
+                    .getEngineByExtension(FilenameUtils.getExtension(vkHandlerFile.getName()));
+            if (engine == null) throw new BotInitializationException(
+                    "Unknown script extension of VK-handler: `" + vkHandlerFile.getName() + "`"
+            );
+
+            val bindings = engine.createBindings();
+            bindings.put("log", LoggerFactory.getLogger("VK-Handler"));
+
+            try (val reader = new BufferedReader(new FileReader(vkHandlerFile))) {
+                //noinspection unchecked
+                vkCallbackHandlerFactory = (Function<CatOBot, CallbackApi>) engine.eval(reader, bindings);
+            } catch (final IOException e) {
+                throw new BotInitializationException("Unable to load VK-handler script", e);
+            } catch (final ScriptException e) {
+                throw new BotInitializationException("Unable to compile VK-handler script", e);
+            } catch (final ClassCastException e) {
+                throw new BotInitializationException("VK-handler should extend " + CallbackApi.class + " interface", e);
+            }
+        }
+        log.info("Loaded callback-api handler {}", vkCallbackHandlerFactory);
 
         senderWorkers = createExecutorService(config.getSenderWorkers());
 
@@ -71,10 +110,16 @@ public class CatOBotMain {
                 ), null, config.getPreloadedImagesCacheSize(), config.getPreloadInterval());
         log.info("Initialized cat images repository: {}", catImages);
 
+        log.info("Initializing recognizer...");
+        recognizer = new WitAiRecognizer(
+                HttpClients.createDefault(), createExecutorService(config.recognizerWorkers), config.getWitAiConfig()
+        );
+        log.info("Initialized recognizer: {}", recognizer);
+
         log.info("Initializing VK-manager...");
-        vk =  new SimpleVkCatsManager(
+        vk = new SimpleVkCatsManager(
                 config.getVkApiConfig(), createExecutorService(config.getVkApiWorkers()),
-                new LongPollEventListener(config.createMessageToCatImagesCountFunction())
+                vkCallbackHandlerFactory.apply(this)
         );
         log.info("Initialized VK-manager: {}", vk);
         vk.startLongPolling();
@@ -84,24 +129,25 @@ public class CatOBotMain {
         Runtime.getRuntime().addShutdownHook(shutdownHook = new Thread(this::shutdown));
     }
 
-    protected void await() throws AlreadyShutDownException {
+    public boolean run() {
         if (shutdown.get()) throw new AlreadyShutDownException("This CatOBot is already shut down");
 
-        try {
-            val reader = new Scanner(System.in);
-            while (true) if (reader.nextLine().equals("stop")) {
+        val reader = new Scanner(System.in);
+        while (true) switch (reader.nextLine()) {
+            case "stop": case "end": {
                 shutdown();
 
-                return;
+                return false;
             }
-        } catch (final Throwable e) {
-            log.error("An exception occurred while awaiting", e);
-            shutdown();
+            case "reload": case "restart": {
+                shutdown();
 
-            throw e;
+                return true;
+            }
         }
     }
 
+    @Override
     public void shutdown() {
         if (shutdown.compareAndSet(false, true)) {
             try {
@@ -124,31 +170,9 @@ public class CatOBotMain {
         }
     }
 
-    public static void main(@NonNull final String... args) throws IOException {
-        for (val arg : args) if (arg.toLowerCase().equals("--debug")) Configurator
-                .setLevel(System.getProperty("log4j.logger"), Level.DEBUG);
-
-        log.info("Stating new instance of Cat'O'Bot");
-        new CatOBotMain().await();
-        log.info("Cat'O'Bot has ended its job, goodbye <3");
-        /*
-        final int insuccessful;
-        while (true) try {
-            log.info("Stating new instance of Cat'O'Bot");
-            new CatOBotMain().await();
-            log.info("Cat'O'Bot has ended its job, goodbye <3");
-
-            return;
-        } catch (final AlreadyShutDownException | IOException expected) {
-            // an expected exception restarts the bot
-            log.error("An exception occurred, restarting", expected);
-        }
-         */
-    }
-
     protected Config loadConfig(@NonNull final File file) throws IOException {
         if (file.isFile()) try (val reader = Files.newBufferedReader(file.toPath())) {
-            return PRETTY_GSON.fromJson(reader, Config.class);
+            return CONFIG_GSON.fromJson(reader, Config.class);
         } else {
             {
                 val parent = file.getParentFile();
@@ -156,7 +180,7 @@ public class CatOBotMain {
             }
             val config = new Config();
             try (val writer = Files.newBufferedWriter(file.toPath())) {
-                PRETTY_GSON.toJson(config, writer);
+                CONFIG_GSON.toJson(config, writer);
             }
 
             return config;
@@ -199,7 +223,7 @@ public class CatOBotMain {
         private static final byte MAX_CAT_COUNT_DECIMAL_DIGITS = 3;
 
         boolean useSsl;
-        @Builder.Default int senderWorkers = 0, imageFactoryWorkers = 0, vkApiWorkers = 0,
+        @Builder.Default int senderWorkers = 0, imageFactoryWorkers = 0, vkApiWorkers = 0, recognizerWorkers = 0,
                 preloadedImagesCacheSize = 100, preloadInterval = 1_000_000;
         @SerializedName("the-cat-api") @Builder.Default @NonNull TheCatApiCatImageFactory.Configuration theCatApiConfig
                 = TheCatApiCatImageFactory.Configuration.builder().build();
@@ -207,8 +231,14 @@ public class CatOBotMain {
                 = SimpleVkCatsManager.Configuration.builder()
                 .groupToken("1234567890abcdef1234567890abcdef")
                 .build();
+        @SerializedName("wit-ai") @Builder.Default @NonNull WitAiRecognizer.Configuration witAiConfig
+                = WitAiRecognizer.Configuration.builder()
+                .userToken("1234567890abcdef1234567890abcdef")
+                .build();
         @Builder.Default int maxImages = 10;
         @NonNull @Singular List<String> catAliases;
+
+        @SerializedName("vk-handler") @NonNull @Builder.Default File vkHandlerFile = new File("handler/vk.groovy");
 
         public Function<Message, Integer> createMessageToCatImagesCountFunction() {
             val basePatternBuilder = new StringBuilder();
@@ -279,24 +309,18 @@ public class CatOBotMain {
         }
     }
 
-    @NoArgsConstructor
-    protected static final class AlreadyShutDownException extends RuntimeException {
+    @RequiredArgsConstructor
+    @FieldDefaults(level = AccessLevel.PROTECTED, makeFinal = true)
+    protected static class CallbackApiWrapper extends CallbackApi {
 
-        public AlreadyShutDownException(final String message) {
-            super(message);
-        }
+        @NonNull CallbackApi callbackApi;
 
-        public AlreadyShutDownException(final String message, final Throwable cause) {
-            super(message, cause);
-        }
+        protected interface __Excludes {
+            boolean parse(String json);
 
-        public AlreadyShutDownException(final Throwable cause) {
-            super(cause);
-        }
+            boolean parse(JsonObject json);
 
-        public AlreadyShutDownException(final String message, final Throwable cause, final boolean enableSuppression,
-                                        final boolean writableStackTrace) {
-            super(message, cause, enableSuppression, writableStackTrace);
+            void messageNew(final Integer groupId, final String secret, final Message message);
         }
     }
 }
