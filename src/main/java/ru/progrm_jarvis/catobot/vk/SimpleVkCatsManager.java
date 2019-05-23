@@ -124,7 +124,11 @@ public class SimpleVkCatsManager implements VkCatsManager {
 
                         log.debug("Received long-poll response: " + response.getUpdates());
 
-                        for (val update : response.getUpdates()) longPollEventHandler.parse(update);
+                        try {
+                            for (val update : response.getUpdates()) longPollEventHandler.parse(update);
+                        } catch (final Throwable e) {
+                            log.warn("An exception occurred while handling a long-poll event", e);
+                        }
                     } catch (final ClientException | ApiException e) {
                         log.debug("An exception occurred while long-polling, retrying", e);
 
