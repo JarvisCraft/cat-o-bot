@@ -11,11 +11,15 @@
                 <OnStartupTriggeringPolicy />
             </Policies>
         </RollingRandomAccessFile>
+        <Sentry name="Sentry" />
     </Appenders>
     <Loggers>
         <Root level="info">
             <AppenderRef ref="Console"/>
             <AppenderRef ref="File"/>
+        </Root>
+        <Root level="warn">
+            <AppenderRef ref="Sentry"/>
         </Root>
     </Loggers>
 </Configuration>

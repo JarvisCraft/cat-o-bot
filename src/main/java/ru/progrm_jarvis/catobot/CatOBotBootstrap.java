@@ -1,5 +1,6 @@
 package ru.progrm_jarvis.catobot;
 
+import io.sentry.Sentry;
 import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 
@@ -15,6 +16,8 @@ public class CatOBotBootstrap {
      * @param args command-line arguments passed
      */
     public static void main(@NonNull final String... args) {
+        Sentry.init();
+
         CatOBot bot;
         while (true) {
             try {
