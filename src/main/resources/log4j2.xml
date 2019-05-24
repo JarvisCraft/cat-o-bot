@@ -7,11 +7,11 @@
         <RollingRandomAccessFile name="File" fileName="logs/latest.log" filePattern="logs/%d{MM-dd-yyyy}-%i.log.gz">
             <PatternLayout pattern="%d{HH:mm:ss} %-5level %logger{36} - %msg%n"/>
             <Policies>
-                <TimeBasedTriggeringPolicy />
-                <OnStartupTriggeringPolicy />
+                <TimeBasedTriggeringPolicy/>
+                <OnStartupTriggeringPolicy/>
             </Policies>
         </RollingRandomAccessFile>
-        <Sentry name="Sentry" />
+        <Sentry name="Sentry"/>
     </Appenders>
     <Loggers>
         <Root level="info">
