@@ -3,12 +3,8 @@ package ru.progrm_jarvis.catobot;
 import com.google.gson.FieldNamingPolicy;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.JsonObject;
 import com.google.gson.annotations.SerializedName;
 import com.vk.api.sdk.callback.CallbackApi;
-import com.vk.api.sdk.exceptions.ApiException;
-import com.vk.api.sdk.exceptions.ClientException;
-import com.vk.api.sdk.objects.messages.Message;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +13,6 @@ import org.apache.http.impl.client.HttpClients;
 import org.slf4j.LoggerFactory;
 import ru.progrm_jarvis.catobot.ai.Recognizer;
 import ru.progrm_jarvis.catobot.ai.WitAiRecognizer;
-import ru.progrm_jarvis.catobot.image.CatImage;
 import ru.progrm_jarvis.catobot.image.TheCatApiCatImage;
 import ru.progrm_jarvis.catobot.image.factory.TheCatApiCatImageFactory;
 import ru.progrm_jarvis.catobot.image.repository.CatImageRepository;
@@ -33,18 +28,11 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.List;
-import java.util.Optional;
 import java.util.Scanner;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
-import java.util.regex.Pattern;
-import java.util.stream.Stream;
-
-import static java.lang.Math.max;
-import static java.lang.Math.min;
 
 @Slf4j
 @FieldDefaults(level = AccessLevel.PROTECTED, makeFinal = true)
@@ -220,8 +208,6 @@ public class CatOBotCli implements CatOBot {
     @FieldDefaults(level = AccessLevel.PROTECTED)
     protected static class Config {
 
-        private static final byte MAX_CAT_COUNT_DECIMAL_DIGITS = 3;
-
         boolean useSsl;
         @Builder.Default int senderWorkers = 0, imageFactoryWorkers = 0, vkApiWorkers = 0, recognizerWorkers = 0,
                 preloadedImagesCacheSize = 100, preloadInterval = 1_000_000;
@@ -239,88 +225,5 @@ public class CatOBotCli implements CatOBot {
         @NonNull @Singular List<String> catAliases;
 
         @SerializedName("vk-handler") @NonNull @Builder.Default File vkHandlerFile = new File("handler/vk.groovy");
-
-        public Function<Message, Integer> createMessageToCatImagesCountFunction() {
-            val basePatternBuilder = new StringBuilder();
-            val size = catAliases.size();
-            for (var i = 0; i < size; i++) {
-                if (i != 0) basePatternBuilder.append('|');
-                basePatternBuilder.append('(').append('?').append(':').append(catAliases.get(i)).append(')');
-            }
-            val basePattern = basePatternBuilder.toString();
-
-            final Pattern
-                    generalPattern = Pattern.compile("\\b" + basePattern),
-                    numberedPattern = Pattern.compile(
-                            "\\b(\\d{1," + MAX_CAT_COUNT_DECIMAL_DIGITS + "})\\s(" + basePattern + ")"
-                    );
-
-            log.debug("Created pattern `" + generalPattern + "` for matching single cat requests");
-            log.debug("Created pattern `" + numberedPattern + "` for matching numbered cat requests");
-
-            return message -> {
-                val text = message.getText().toLowerCase();
-                var matcher = generalPattern.matcher(text);
-                if (matcher.find()) {
-                    matcher = numberedPattern.matcher(text);
-                    if (matcher.find()) return max(1, min(maxImages, Integer.parseInt(matcher.group(1))));
-                    return 1;
-                }
-
-                return 0;
-            };
-        }
-    }
-
-    @RequiredArgsConstructor
-    @FieldDefaults(level = AccessLevel.PROTECTED, makeFinal = true)
-    public class LongPollEventListener extends CallbackApi {
-
-        @NonNull Function<Message, Integer> messageCountParser;
-
-        @Override
-        public void messageNew(final Integer groupId, final Message message) {
-            log.debug("Received message: {} from {}", message.getId(), message.getPeerId());
-
-            val imagesCount = messageCountParser.apply(message);
-            if (imagesCount > 0) senderWorkers.submit(() -> {
-                try {
-                    val images = catImages.pickRandomCatImages(imagesCount, null)
-                            .parallelStream()
-                            .flatMap(imageFuture -> {
-                                final Optional<TheCatApiCatImage> image;
-                                try {
-                                    image = imageFuture.get();
-                                } catch (InterruptedException | ExecutionException e) {
-                                    log.error("An exception occurred while getting one of the images", e);
-                                    return Stream.empty();
-                                }
-
-                                return image.map(Stream::of).orElseGet(Stream::empty);
-                            })
-                            .toArray(CatImage[]::new);
-
-                    if (images.length == 0) vk.sendCatsUnavailable(message.getPeerId(), message.getId());
-                    else vk.sendCatImages(message.getPeerId(), message.getId(), images);
-                } catch (final RuntimeException | ClientException | ApiException | IOException e) {
-                    log.error("An exception occurred while trying to respond to " + message, e);
-                }
-            });
-        }
-    }
-
-    @RequiredArgsConstructor
-    @FieldDefaults(level = AccessLevel.PROTECTED, makeFinal = true)
-    protected static class CallbackApiWrapper extends CallbackApi {
-
-        @NonNull CallbackApi callbackApi;
-
-        protected interface __Excludes {
-            boolean parse(String json);
-
-            boolean parse(JsonObject json);
-
-            void messageNew(final Integer groupId, final String secret, final Message message);
-        }
     }
 }
