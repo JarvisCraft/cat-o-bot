@@ -43,7 +43,6 @@ public class CatOBotCli implements CatOBot {
             .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_DASHES)
             .create();
 
-    @NonNull ExecutorService senderWorkers;
     @NonNull @Getter CatImageRepository<TheCatApiCatImage, TheCatApiCatImageFactory.Configuration> catImages;
     @NonNull @Getter VkCatsManager vk;
     @NonNull @Getter Recognizer recognizer;
@@ -88,8 +87,6 @@ public class CatOBotCli implements CatOBot {
         }
         log.info("Loaded callback-api handler {}", vkCallbackHandlerFactory);
 
-        senderWorkers = createExecutorService(config.getSenderWorkers());
-
         log.info("Initializing cat images repository...");
         catImages = new PreLoadingCatImageRepository<>(
                 new TheCatApiCatImageFactory(
@@ -112,9 +109,9 @@ public class CatOBotCli implements CatOBot {
         log.info("Initialized VK-manager: {}", vk);
         vk.startLongPolling();
 
-        shutdown = new AtomicBoolean(false);
+        shutdown = new AtomicBoolean();
 
-        Runtime.getRuntime().addShutdownHook(shutdownHook = new Thread(this::shutdown));
+        Runtime.getRuntime().addShutdownHook(shutdownHook = new Thread(this::close));
     }
 
     public boolean run() {
@@ -123,12 +120,12 @@ public class CatOBotCli implements CatOBot {
         val reader = new Scanner(System.in);
         while (reader.hasNext()) switch (reader.nextLine()) {
             case "stop": case "end": {
-                shutdown();
+                close();
 
                 return false;
             }
             case "reload": case "restart": {
-                shutdown();
+                close();
 
                 return true;
             }
@@ -138,7 +135,7 @@ public class CatOBotCli implements CatOBot {
     }
 
     @Override
-    public void shutdown() {
+    public void close() {
         if (shutdown.compareAndSet(false, true)) {
             try {
                 vk.close();
@@ -149,11 +146,6 @@ public class CatOBotCli implements CatOBot {
                 catImages.close();
             } catch (final Throwable e) {
                 log.error("An exception occurred while shutting down repository of cat images", e);
-            }
-            try {
-                senderWorkers.shutdown();
-            } catch (final Throwable e) {
-                log.error("An exception occurred while shutting down sender workers", e);
             }
 
             Runtime.getRuntime().removeShutdownHook(shutdownHook);

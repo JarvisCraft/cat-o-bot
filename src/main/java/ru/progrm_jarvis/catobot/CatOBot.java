@@ -8,7 +8,7 @@ import ru.progrm_jarvis.catobot.vk.VkCatsManager;
 /**
  * Cat'o'Bot base used as a basic objects for its API usage (including scripting API).
  */
-public interface CatOBot {
+public interface CatOBot extends AutoCloseable {
 
     /**
      * Runs this Cat'o'Bot.
@@ -40,11 +40,6 @@ public interface CatOBot {
      * @return recognizer of this bot
      */
     Recognizer getRecognizer();
-
-    /**
-     * Shuts this bot instance down.
-     */
-    void shutdown();
 
     /**
      * An exception thrown whenever an attempt to shut down an already shut down bot happens.
