@@ -121,7 +121,7 @@ public class CatOBotCli implements CatOBot {
         if (shutdown.get()) throw new AlreadyShutDownException("This CatOBot is already shut down");
 
         val reader = new Scanner(System.in);
-        while (true) switch (reader.nextLine()) {
+        while (reader.hasNext()) switch (reader.nextLine()) {
             case "stop": case "end": {
                 shutdown();
 
@@ -133,6 +133,8 @@ public class CatOBotCli implements CatOBot {
                 return true;
             }
         }
+
+        return false;
     }
 
     @Override
