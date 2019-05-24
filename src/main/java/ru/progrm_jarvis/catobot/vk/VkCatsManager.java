@@ -2,8 +2,6 @@ package ru.progrm_jarvis.catobot.vk;
 
 import com.vk.api.sdk.client.VkApiClient;
 import com.vk.api.sdk.client.actors.GroupActor;
-import com.vk.api.sdk.exceptions.ApiException;
-import com.vk.api.sdk.exceptions.ClientException;
 import com.vk.api.sdk.objects.messages.AudioMessage;
 import lombok.NonNull;
 import org.jetbrains.annotations.Nullable;
@@ -75,8 +73,6 @@ public interface VkCatsManager extends AutoCloseable {
      * @param peerId receiver of the message
      * @param repliedMessageId ID of a message which this one replies to
      * @param images cat images to send
-     * @throws ClientException if an exception occurs while performing the request
-     * @throws ApiException if an exception occurs while using VK-API
      */
     void sendCatImages(int peerId, @Nullable Integer repliedMessageId,
                        @NonNull List<CompletableFuture<CatImage>> images);
