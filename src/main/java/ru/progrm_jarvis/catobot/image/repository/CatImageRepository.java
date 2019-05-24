@@ -23,7 +23,7 @@ public interface CatImageRepository<I extends CatImage, C> extends AutoCloseable
      * @param configuration configurations used to get a cat image
      * @return future returning {@link Optional} which should contain a cat image or be empty if something goes wrong
      */
-    CompletableFuture<Optional<I>> pickRandomCatImage(C configuration);
+    CompletableFuture<I> pickRandomCatImage(C configuration);
 
     /**
      * Packs random cat images from this repository.
@@ -34,10 +34,10 @@ public interface CatImageRepository<I extends CatImage, C> extends AutoCloseable
      *
      * @throws IllegalArgumentException if count is negative
      */
-    default List<CompletableFuture<Optional<I>>> pickRandomCatImages(final int count, final C configuration) {
+    default List<CompletableFuture<I>> pickRandomCatImages(final int count, final C configuration) {
         if (count < 0) throw new IllegalArgumentException("count should be non-negative");
 
-        val catImages = new ArrayList<CompletableFuture<Optional<I>>>(count);
+        val catImages = new ArrayList<CompletableFuture<I>>(count);
         for (var i = 0; i < count; i++) catImages.add(pickRandomCatImage(configuration));
 
         return catImages;

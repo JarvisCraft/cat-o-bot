@@ -7,7 +7,6 @@ import lombok.experimental.FieldDefaults;
 import ru.progrm_jarvis.catobot.image.CatImage;
 import ru.progrm_jarvis.catobot.image.factory.CatImageFactory;
 
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -26,7 +25,7 @@ public class NonCachingImageRepository<I extends CatImage, C> implements CatImag
     @NonNull CatImageFactory<I, C> factory;
 
     @Override
-    public CompletableFuture<Optional<I>> pickRandomCatImage(final C configuration) {
+    public CompletableFuture<I> pickRandomCatImage(final C configuration) {
         return factory.createCatImage(configuration);
     }
 

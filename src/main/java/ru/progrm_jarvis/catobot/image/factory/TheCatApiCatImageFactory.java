@@ -16,7 +16,6 @@ import ru.progrm_jarvis.catobot.util.TheCatApiUtil;
 import java.io.IOException;
 import java.net.URISyntaxException;
 import java.util.Arrays;
-import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedDeque;
@@ -24,7 +23,6 @@ import java.util.concurrent.ExecutorService;
 
 import static java.lang.Math.max;
 import static java.lang.Math.min;
-import static java.util.Optional.empty;
 
 /**
  * Cat image factory based on TheCatApi.
@@ -56,7 +54,7 @@ public class TheCatApiCatImageFactory
     @NonNull Queue<TheCatApiCatImage> loadedImages = new ConcurrentLinkedDeque<>();
 
     @Override
-    @NotNull public CompletableFuture<Optional<TheCatApiCatImage>> createCatImage(
+    @NotNull public CompletableFuture<TheCatApiCatImage> createCatImage(
             @Nullable final Configuration configuration) {
         val config = configuration == null ? defaultConfiguration : configuration;
         return CompletableFuture.supplyAsync(() -> {
@@ -72,8 +70,8 @@ public class TheCatApiCatImageFactory
                             )))
                             .build()
                     );
-                } catch (URISyntaxException e) {
-                    return empty();
+                } catch (final URISyntaxException e) {
+                    throw new RuntimeException("An exception occurred while creating a URI for loading cat images", e);
                 }
                 val apiKey = config.getApiKey();
                 if (apiKey != null) getRequest.setHeader("x-api-key", apiKey);
@@ -84,7 +82,7 @@ public class TheCatApiCatImageFactory
                 try (val inputStream = httpClient.execute(getRequest).getEntity().getContent()) {
                     images = TheCatApiUtil.parseCatImages(inputStream);
                 } catch (final IOException e) {
-                    return empty();
+                    throw new RuntimeException("An exception occurred while loading cat images", e);
                 }
 
                 // add factory to the images
@@ -103,16 +101,18 @@ public class TheCatApiCatImageFactory
                 val length = images.length;
                 log.debug("Loaded {} cat images: {}", length, images);
                 switch (length) {
-                    case 0: return empty();
-                    case 1: return Optional.of(images[0]);
+                    case 0: throw new RuntimeException(
+                            "Unable to load cat image, an empty array was returned by TheCatApi"
+                    );
+                    case 1: return images[0];
                     default: {
                         loadedImages.addAll(Arrays.asList(Arrays.copyOfRange(images, 1, length - 1)));
-                        return Optional.of(images[0]);
+                        return images[0];
                     }
                 }
             }
 
-            return Optional.of(nextImage);
+            return nextImage;
         }, executor);
     }
 

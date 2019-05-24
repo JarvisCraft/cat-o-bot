@@ -8,6 +8,7 @@ import com.vk.api.sdk.exceptions.ClientException;
 import com.vk.api.sdk.httpclient.HttpTransportClient;
 import com.vk.api.sdk.objects.groups.LongPollServer;
 import com.vk.api.sdk.objects.messages.AudioMessage;
+import com.vk.api.sdk.objects.photos.responses.MessageUploadResponse;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
@@ -24,13 +25,13 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
@@ -39,6 +40,7 @@ public class SimpleVkCatsManager implements VkCatsManager {
 
     @NonNull Configuration configuration;
     @NonNull ExecutorService executor;
+    @NonNull ExecutorService pictureUploaderThreadPool;
     @NonNull @Getter VkApiClient client;
     @NonNull HttpClient httpClient; // TODO: 17.05.2019 optimize 
     @NonNull CallbackApi longPollEventHandler;
@@ -51,6 +53,7 @@ public class SimpleVkCatsManager implements VkCatsManager {
                                @NonNull final CallbackApi longPollEventHandler) {
         this.configuration = configuration;
         this.executor = executor;
+        pictureUploaderThreadPool = Executors.newCachedThreadPool();
         this.longPollEventHandler = longPollEventHandler;
 
         httpClient = HttpClients.createDefault(); // FIXME: 17.05.2019
@@ -179,26 +182,69 @@ public class SimpleVkCatsManager implements VkCatsManager {
     @Override
     public void sendCatImages(final int peerId,
                               @Nullable final Integer repliedMessageId,
-                              @NonNull final CatImage... images)
-            throws IOException, ClientException, ApiException {
-        val photoUploadUrl = client.photos().getMessagesUploadServer(groupActor)
-                .peerId(peerId)
-                .execute()
-                .getUploadUrl();
+                              @NonNull final List<CompletableFuture<CatImage>> images) {
+        final URL photoUploadUrl;
+        try {
+            photoUploadUrl = client.photos().getMessagesUploadServer(groupActor)
+                    .peerId(peerId)
+                    .execute()
+                    .getUploadUrl();
+        } catch (final ApiException | ClientException e) {
+            log.warn("Unable to get photo-upload URL for storing sent cat-images", e);
+            return;
+        }
+
+        // size of images array
+        val size = images.size();
+
+        val uploads = new ArrayList<MessageUploadResponse>(size);
+        val countdown = new CountDownLatch(size);
+        for (val image : images) image.whenCompleteAsync((catImage, e) -> {
+            try {
+                if (e != null) log.warn("An exception occurred while loading one of cat images", e);
+                else {
+                    final File tempFile;
+                    try {
+                        tempFile = File.createTempFile("tmp_cat_img", '.' + catImage.getType());
+                    } catch (final IOException ex) {
+                        log.warn("Unable to create temp-file for cat-image", ex);
+                        return;
+                    }
+                    try {
+                        tempFile.deleteOnExit();
+                        try {
+                            Files.write(tempFile.toPath(), catImage.getImage());
+                        } catch (final IOException ex) {
+                            log.warn("Unable to write to temp-file of cat-image", ex);
+                            return;
+                        }
+
+                        // upload the image
+                        try {
+                            uploads.add(client.upload().photoMessage(photoUploadUrl.toString(), tempFile).execute());
+                        } catch (final ApiException | ClientException ex) {
+                            log.warn("Unable to upload cat image to VK", ex);
+                        }
+                    } finally {
+                        //noinspection ResultOfMethodCallIgnored
+                        tempFile.delete();
+                    }
+                }
+            } finally {
+                countdown.countDown();
+            }
+        }, pictureUploaderThreadPool);
+
+        try {
+            countdown.await();
+        } catch (final InterruptedException e) {
+            log.warn("Attempt to load cat images was interrupted", e);
+            return;
+        }
 
         val script = new StringBuilder("var a;");
-        for (var i = 0; i < images.length; i++) {
-            val image = images[i];
-            //val tempFile = File.createTempFile("catobot_temp_img", null);
-            val tempFile = File.createTempFile("tmp_cat_img", '.' + image.getType());
-            tempFile.deleteOnExit();
-            Files.write(tempFile.toPath(), image.getImage());
-
-            // upload the image
-            val upload = client.upload().photoMessage(photoUploadUrl.toString(), tempFile).execute();
-            //noinspection ResultOfMethodCallIgnored
-            tempFile.delete();
-
+        for (var i = 0; i < uploads.size(); i++) {
+            val upload = uploads.get(i);
             // store image in variable c and create attachment from it
             script.append("{var c=API.photos.saveMessagesPhoto({\"photo\":\"")
                     .append(upload.getPhoto().replace("\"", "\\\""))
@@ -210,7 +256,7 @@ public class SimpleVkCatsManager implements VkCatsManager {
         }
 
         script.append("return API.messages.send({\"attachment\":a,\"random_id\":")
-                .append(ThreadLocalRandom.current().nextInt() ^ Arrays.hashCode(images))
+                .append(getRandomMessageId(peerId))
                 .append(",\"peer_id\":").append(peerId);
 
         CollectionUtil.getRandom(configuration.getMessages().getCatsSent()).ifPresent(message -> {
@@ -224,7 +270,11 @@ public class SimpleVkCatsManager implements VkCatsManager {
 
         val code = script.toString();
         log.debug("Executing VKScript: {}`", code);
-        client.execute().code(groupActor, script.toString()).execute();
+        try {
+            client.execute().code(groupActor, script.toString()).execute();
+        } catch (final ApiException | ClientException e) {
+            log.warn("Unable to send cat-images message", e);
+        }
     }
 
     @Override

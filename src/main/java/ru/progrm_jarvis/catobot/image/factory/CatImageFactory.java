@@ -4,7 +4,6 @@ import lombok.NonNull;
 import org.jetbrains.annotations.NotNull;
 import ru.progrm_jarvis.catobot.image.CatImage;
 
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -25,7 +24,7 @@ public interface CatImageFactory<I extends CatImage, C> extends AutoCloseable {
      *
      * @apiNote {@code configuration} may be {@link null} if type of configuration is {@link Void}
      */
-    @NotNull CompletableFuture<Optional<I>> createCatImage(@NonNull final C configuration);
+    @NotNull CompletableFuture<I> createCatImage(@NonNull final C configuration);
 
     @Override
     default void close() {}

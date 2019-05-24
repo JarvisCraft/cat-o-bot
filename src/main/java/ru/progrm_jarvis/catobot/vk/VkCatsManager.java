@@ -9,9 +9,10 @@ import lombok.NonNull;
 import org.jetbrains.annotations.Nullable;
 import ru.progrm_jarvis.catobot.image.CatImage;
 
-import java.io.IOException;
 import java.io.InputStream;
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Manager responsible for all business-logic of cats-sending via VK.
@@ -77,6 +78,6 @@ public interface VkCatsManager extends AutoCloseable {
      * @throws ClientException if an exception occurs while performing the request
      * @throws ApiException if an exception occurs while using VK-API
      */
-    void sendCatImages(int peerId, @Nullable Integer repliedMessageId, @NonNull CatImage... images)
-            throws IOException, ClientException, ApiException;
+    void sendCatImages(int peerId, @Nullable Integer repliedMessageId,
+                       @NonNull List<CompletableFuture<CatImage>> images);
 }
