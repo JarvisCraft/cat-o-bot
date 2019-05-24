@@ -17,9 +17,7 @@
         <Root level="info">
             <AppenderRef ref="Console"/>
             <AppenderRef ref="File"/>
-        </Root>
-        <Root level="warn">
-            <AppenderRef ref="Sentry"/>
+            <AppenderRef ref="Sentry" level="warn"/>
         </Root>
     </Loggers>
 </Configuration>
