@@ -27,7 +27,6 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -106,31 +105,15 @@ public class CatOBotCli implements CatOBot {
                 vkCallbackHandlerFactory.apply(this)
         );
         log.info("Initialized VK-manager: {}", vk);
-        vk.startLongPolling();
 
         shutdown = new AtomicBoolean();
 
         Runtime.getRuntime().addShutdownHook(shutdownHook = new Thread(this::close));
     }
 
-    public boolean run() {
+    public void run() {
         if (shutdown.get()) throw new AlreadyShutDownException("This CatOBot is already shut down");
-
-        val reader = new Scanner(System.in);
-        while (reader.hasNext()) switch (reader.nextLine()) {
-            case "stop": case "end": {
-                close();
-
-                return false;
-            }
-            case "reload": case "restart": {
-                close();
-
-                return true;
-            }
-        }
-
-        return false;
+        vk.startLongPolling();
     }
 
     @Override

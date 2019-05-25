@@ -8,17 +8,7 @@ import ru.progrm_jarvis.catobot.vk.VkCatsManager;
 /**
  * Cat'o'Bot base used as a basic objects for its API usage (including scripting API).
  */
-public interface CatOBot extends AutoCloseable {
-
-    /**
-     * Runs this Cat'o'Bot.
-     *
-     * @return {@link true} if the Cat'o'Bot should be restarted (using new instance) and {@link false} otherwise
-     *
-     * @apiNote call to this method is expected to get `stuck` in it so that the caller
-     * gets access back only in case of end of bot stopping or in case of an exception
-     */
-    boolean run();
+public interface CatOBot extends Runnable, AutoCloseable {
 
     /**
      * Gets {@link CatImageRepository} of this bot.
