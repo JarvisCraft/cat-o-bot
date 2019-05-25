@@ -27,7 +27,6 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -203,7 +202,7 @@ public class CatOBotCli implements CatOBot {
     protected static class Config {
 
         boolean useSsl;
-        @Builder.Default int senderWorkers = 0, imageFactoryWorkers = 0, vkApiWorkers = 0, recognizerWorkers = 0,
+        @Builder.Default int imageFactoryWorkers = 0, vkApiWorkers = 0, recognizerWorkers = 0,
                 preloadedImagesCacheSize = 100, preloadInterval = 1_000_000;
         @SerializedName("the-cat-api") @Builder.Default @NonNull TheCatApiCatImageFactory.Configuration theCatApiConfig
                 = TheCatApiCatImageFactory.Configuration.builder().build();
@@ -215,8 +214,6 @@ public class CatOBotCli implements CatOBot {
                 = WitAiRecognizer.Configuration.builder()
                 .userToken("1234567890abcdef1234567890abcdef")
                 .build();
-        @Builder.Default int maxImages = 10;
-        @NonNull @Singular List<String> catAliases;
 
         @SerializedName("vk-handler") @NonNull @Builder.Default File vkHandlerFile = new File("handler/vk.groovy");
     }
