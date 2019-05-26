@@ -49,7 +49,7 @@ public class CatOBotBootstrap {
                 while (true) {
                     try {
                         // read line input
-                        val line = cli.readLine("~ ");
+                        val line = cli.readLine();
                         // try to handle line input
                         switch (line.toLowerCase()) {
                             case "reload": case "restart": continue botSession;
