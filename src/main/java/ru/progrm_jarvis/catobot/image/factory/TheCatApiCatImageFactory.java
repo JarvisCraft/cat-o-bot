@@ -118,7 +118,7 @@ public class TheCatApiCatImageFactory
 
     @Override
     public void close() {
-        executor.shutdown();
+        executor.shutdownNow();
     }
 
     /**

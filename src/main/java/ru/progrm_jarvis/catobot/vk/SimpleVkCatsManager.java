@@ -280,7 +280,7 @@ public class SimpleVkCatsManager implements VkCatsManager {
     @Override
     public void close() {
         stopLongPolling();
-        executor.shutdown();
+        executor.shutdownNow();
     }
 
     @Data

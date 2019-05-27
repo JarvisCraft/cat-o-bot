@@ -29,6 +29,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
@@ -89,19 +90,21 @@ public class CatOBotCli implements CatOBot {
         catImages = new PreLoadingCatImageRepository<>(
                 new TheCatApiCatImageFactory(
                         config.getTheCatApiConfig(), HttpClients.createDefault(),
-                        createExecutorService(config.getImageFactoryWorkers())
+                        createExecutorService(config.getImageFactoryWorkers(), true)
                 ), null, config.getPreloadedImagesCacheSize(), config.getPreloadInterval());
         log.info("Initialized cat images repository: {}", catImages);
 
         log.info("Initializing recognizer...");
         recognizer = new WitAiRecognizer(
-                HttpClients.createDefault(), createExecutorService(config.recognizerWorkers), config.getWitAiConfig()
+                HttpClients.createDefault(),
+                createExecutorService(config.recognizerWorkers, true),
+                config.getWitAiConfig()
         );
         log.info("Initialized recognizer: {}", recognizer);
 
         log.info("Initializing VK-manager...");
         vk = new SimpleVkCatsManager(
-                config.getVkApiConfig(), createExecutorService(config.getVkApiWorkers()),
+                config.getVkApiConfig(), createExecutorService(config.getVkApiWorkers(), true),
                 vkCallbackHandlerFactory.apply(this)
         );
         log.info("Initialized VK-manager: {}", vk);
@@ -163,17 +166,28 @@ public class CatOBotCli implements CatOBot {
      * <dd>{@link Executors#newFixedThreadPool(int)}</dd>
      *
      * @param workers amount of workers to use or {@link 0} for unlimited pool
+     * @param daemon {@link true} if the created thread should be daemons and {@link false} otherwise
      * @return new executor based on the given amount of workers of it
      *
      * @throws IllegalArgumentException if the amount of workers is negative
      */
-    protected static ExecutorService createExecutorService(final int workers) {
+    protected static ExecutorService createExecutorService(final int workers,
+                                                           boolean daemon) {
         if (workers < 0) throw new IllegalArgumentException("Number of workers cannot be negative");
 
+        final ThreadFactory threadFactory;
+        val defaultThreadFactory = Executors.defaultThreadFactory();
+        threadFactory = task -> {
+            val thread = defaultThreadFactory.newThread(task);
+            if (thread.isDaemon() != daemon) thread.setDaemon(daemon);
+
+            return thread;
+        };
+
         switch (workers) {
-            case 0: return Executors.newCachedThreadPool();
-            case 1: return Executors.newSingleThreadExecutor();
-            default: return Executors.newFixedThreadPool(workers);
+            case 0: return Executors.newCachedThreadPool(threadFactory);
+            case 1: return Executors.newSingleThreadExecutor(threadFactory);
+            default: return Executors.newFixedThreadPool(workers, threadFactory);
         }
     }
 

@@ -73,6 +73,6 @@ public class PreLoadingCatImageRepository<I extends CatImage, C> implements CatI
 
     @Override
     public void close() {
-        worker.shutdown();
+        worker.shutdownNow();
     }
 }
