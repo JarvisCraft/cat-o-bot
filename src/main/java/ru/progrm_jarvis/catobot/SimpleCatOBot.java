@@ -39,7 +39,7 @@ import java.util.function.Function;
 
 @Slf4j
 @FieldDefaults(level = AccessLevel.PROTECTED, makeFinal = true)
-public class CatOBotCli implements CatOBot {
+public class SimpleCatOBot implements CatOBot {
 
     protected static final Gson CONFIG_GSON = new GsonBuilder()
             .setPrettyPrinting()
@@ -58,7 +58,7 @@ public class CatOBotCli implements CatOBot {
 
     @Getter protected final Thread shutdownHook;
 
-    public CatOBotCli() throws BotInitializationException {
+    public SimpleCatOBot() throws BotInitializationException {
         log.info("Loading config");
         final Config config;
         try {
@@ -76,7 +76,7 @@ public class CatOBotCli implements CatOBot {
         {
             val scriptFile = config.getEventHandlerFile();
             if (scriptFile == null || !scriptFile.isFile()) eventHandler = EventHandler.getStub();
-            else eventHandler = CatOBotCli.<Function<CatOBot, EventHandler>>loadScript(scriptFile).apply(this);
+            else eventHandler = SimpleCatOBot.<Function<CatOBot, EventHandler>>loadScript(scriptFile).apply(this);
         }
         log.info("Loaded event handler: {}", eventHandler);
 

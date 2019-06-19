@@ -47,7 +47,7 @@ public class CatOBotBootstrap {
 
         botSession: while (true) {
             // create new AutoCloseable instance of CatOBot
-            try (val bot = new CatOBotCli()) {
+            try (val bot = new SimpleCatOBot()) {
                 bot.run(); // run the Bot
                 while (true) {
                     try {
