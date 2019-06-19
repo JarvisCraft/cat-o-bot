@@ -3,12 +3,36 @@ package ru.progrm_jarvis.catobot;
 import lombok.NoArgsConstructor;
 import ru.progrm_jarvis.catobot.ai.Recognizer;
 import ru.progrm_jarvis.catobot.image.repository.CatImageRepository;
+import ru.progrm_jarvis.catobot.subscription.UserManager;
 import ru.progrm_jarvis.catobot.vk.VkCatsManager;
+
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * Cat'o'Bot base used as a basic objects for its API usage (including scripting API).
  */
 public interface CatOBot extends Runnable, AutoCloseable {
+
+    /**
+     * Gets {@link ScheduledExecutorService scheduler} of this bot.
+     *
+     * @return scheduler of this bot
+     */
+    ScheduledExecutorService getScheduler();
+
+    /**
+     * Gets {@link EventHandler event handler} of this bot.
+     *
+     * @return event handler of this bot
+     */
+    EventHandler getEventHandler();
+
+    /**
+     * Gets {@link UserManager} of this bot.
+     *
+     * @return user-manager of this bot
+     */
+    UserManager getUserManager();
 
     /**
      * Gets {@link CatImageRepository} of this bot.
