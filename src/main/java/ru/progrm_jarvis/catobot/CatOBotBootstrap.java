@@ -68,6 +68,6 @@ public class CatOBotBootstrap {
             }
         }
 
-        log.info("Disabled CatOBot, good night");
+        log.info("Disabling CatOBot, good night");
     }
 }
