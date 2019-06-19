@@ -54,8 +54,7 @@ public class TheCatApiCatImageFactory
     @NonNull Queue<TheCatApiCatImage> loadedImages = new ConcurrentLinkedDeque<>();
 
     @Override
-    @NotNull public CompletableFuture<TheCatApiCatImage> createCatImage(
-            @Nullable final Configuration configuration) {
+    @NotNull public CompletableFuture<TheCatApiCatImage> createCatImage(@Nullable final Configuration configuration) {
         val config = configuration == null ? defaultConfiguration : configuration;
         return CompletableFuture.supplyAsync(() -> {
             val nextImage = loadedImages.poll();
