@@ -6,20 +6,23 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.annotations.SerializedName;
 import com.vk.api.sdk.callback.CallbackApi;
 import lombok.*;
+import lombok.Builder.Default;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.http.impl.client.HttpClients;
-import org.slf4j.LoggerFactory;
 import ru.progrm_jarvis.catobot.ai.Recognizer;
 import ru.progrm_jarvis.catobot.ai.WitAiRecognizer;
 import ru.progrm_jarvis.catobot.image.TheCatApiCatImage;
 import ru.progrm_jarvis.catobot.image.factory.TheCatApiCatImageFactory;
 import ru.progrm_jarvis.catobot.image.repository.CatImageRepository;
 import ru.progrm_jarvis.catobot.image.repository.PreLoadingCatImageRepository;
+import ru.progrm_jarvis.catobot.subscription.RedisUserManager;
+import ru.progrm_jarvis.catobot.subscription.UserManager;
 import ru.progrm_jarvis.catobot.vk.SimpleVkCatsManager;
 import ru.progrm_jarvis.catobot.vk.VkCatsManager;
 
+import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 import java.io.BufferedReader;
@@ -29,6 +32,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
@@ -42,9 +46,13 @@ public class CatOBotCli implements CatOBot {
             .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_DASHES)
             .create();
 
+    @NonNull @Getter ScheduledExecutorService scheduler;
+    @NonNull @Getter UserManager userManager;
     @NonNull @Getter CatImageRepository<TheCatApiCatImage, TheCatApiCatImageFactory.Configuration> catImages;
     @NonNull @Getter VkCatsManager vk;
     @NonNull @Getter Recognizer recognizer;
+
+    @NonNull @Getter EventHandler eventHandler;
 
     @NonNull AtomicBoolean shutdown;
 
@@ -60,30 +68,27 @@ public class CatOBotCli implements CatOBot {
         }
         log.info("Config loaded:\n{}", CONFIG_GSON.toJson(config));
 
-        final Function<CatOBot, CallbackApi> vkCallbackHandlerFactory;
+        log.info("Loading scheduler");
+        scheduler = createScheduledExecutorService(config.getSchedulerWorkers(), false);
+        log.info("Loaded scheduler: {}", scheduler);
+
+        log.info("Loading event handler");
         {
-            val vkHandlerFile = config.getVkHandlerFile();
-
-            val engine = new ScriptEngineManager()
-                    .getEngineByExtension(FilenameUtils.getExtension(vkHandlerFile.getName()));
-            if (engine == null) throw new BotInitializationException(
-                    "Unknown script extension of VK-handler: `" + vkHandlerFile.getName() + "`"
-            );
-
-            val bindings = engine.createBindings();
-            bindings.put("log", LoggerFactory.getLogger("VK-Handler"));
-
-            try (val reader = new BufferedReader(new FileReader(vkHandlerFile))) {
-                //noinspection unchecked
-                vkCallbackHandlerFactory = (Function<CatOBot, CallbackApi>) engine.eval(reader, bindings);
-            } catch (final IOException e) {
-                throw new BotInitializationException("Unable to load VK-handler script", e);
-            } catch (final ScriptException e) {
-                throw new BotInitializationException("Unable to compile VK-handler script", e);
-            } catch (final ClassCastException e) {
-                throw new BotInitializationException("VK-handler should extend " + CallbackApi.class + " interface", e);
-            }
+            val scriptFile = config.getEventHandlerFile();
+            if (scriptFile == null || !scriptFile.isFile()) eventHandler = EventHandler.getStub();
+            else eventHandler = CatOBotCli.<Function<CatOBot, EventHandler>>loadScript(scriptFile).apply(this);
         }
+        log.info("Loaded event handler: {}", eventHandler);
+
+        log.info("Loading user-manager");
+        userManager = new RedisUserManager(
+                createExecutorService(config.getUserManagerWorkers(), false),
+                config.getRedisUserManagerConfig()
+        );
+        log.info("Loaded user-manager: {}", userManager);
+
+        log.info("Loading callback-api handler");
+        final Function<CatOBot, CallbackApi> vkCallbackHandlerFactory = loadScript(config.getVkHandlerFile());
         log.info("Loaded callback-api handler {}", vkCallbackHandlerFactory);
 
         log.info("Initializing cat images repository...");
@@ -114,18 +119,54 @@ public class CatOBotCli implements CatOBot {
         Runtime.getRuntime().addShutdownHook(shutdownHook = new Thread(this::close));
     }
 
+    protected static <T> T loadScript(@NonNull final File scriptFile) {
+        final ScriptEngine engine;
+        {
+            val fileName = scriptFile.getName();
+            engine = new ScriptEngineManager()
+                    .getEngineByExtension(FilenameUtils.getExtension(fileName));
+            if (engine == null) throw new BotInitializationException(
+                    "Unknown script extension of VK-handler: `" + fileName + "`"
+            );
+        }
+
+        val bindings = engine.createBindings();
+
+        try (val reader = new BufferedReader(new FileReader(scriptFile))) {
+            //noinspection unchecked
+            return (T) engine.eval(reader, bindings);
+        } catch (final IOException e) {
+            throw new BotInitializationException("Unable to load script", e);
+        } catch (final ScriptException e) {
+            throw new BotInitializationException("Unable to compile script", e);
+        } catch (final ClassCastException e) {
+            throw new BotInitializationException(
+                    "Object provided by script should be of other type", e
+            );
+        }
+    }
+
     public void run() {
         if (shutdown.get()) throw new AlreadyShutDownException("This CatOBot is already shut down");
         vk.startLongPolling();
+
+        eventHandler.onEnable();
     }
 
     @Override
     public void close() {
         if (shutdown.compareAndSet(false, true)) {
+            eventHandler.onDisable();
+
             try {
                 vk.close();
             } catch (final Throwable e) {
                 log.error("An exception occurred while shutting down VK-manager", e);
+            }
+            try {
+                catImages.close();
+            } catch (final Throwable e) {
+                log.error("An exception occurred while shutting down repository of cat images", e);
             }
             try {
                 catImages.close();
@@ -191,6 +232,40 @@ public class CatOBotCli implements CatOBot {
         }
     }
 
+    /**
+     * Creates a scheduled executor based on the given amount of workers.
+     *
+     * The following strategy is used for various inputs
+     * <dt>0 workers</dt>
+     * <dd>{@link Executors#newCachedThreadPool()}</dd>
+     * <dt>1 worker</dt>
+     * <dd>{@link Executors#newSingleThreadExecutor()}</dd>
+     * <dt>2 or more workers</dt>
+     * <dd>{@link Executors#newFixedThreadPool(int)}</dd>
+     *
+     * @param workers amount of workers to use or {@link 0} for unlimited pool
+     * @param daemon {@link true} if the created thread should be daemons and {@link false} otherwise
+     * @return new scheduled executor based on the given amount of workers of it
+     *
+     * @throws IllegalArgumentException if the amount of workers is negative
+     */
+    protected static ScheduledExecutorService createScheduledExecutorService(final int workers,
+                                                                    boolean daemon) {
+        if (workers < 0) throw new IllegalArgumentException("Number of workers cannot be negative");
+
+        final ThreadFactory threadFactory;
+        val defaultThreadFactory = Executors.defaultThreadFactory();
+        threadFactory = task -> {
+            val thread = defaultThreadFactory.newThread(task);
+            if (thread.isDaemon() != daemon) thread.setDaemon(daemon);
+
+            return thread;
+        };
+
+        if (workers == 1) return Executors.newSingleThreadScheduledExecutor(threadFactory);
+        return Executors.newScheduledThreadPool(workers, threadFactory);
+    }
+
     @Data
     @Builder
     @NoArgsConstructor
@@ -199,19 +274,29 @@ public class CatOBotCli implements CatOBot {
     protected static class Config {
 
         boolean useSsl;
-        @Builder.Default int imageFactoryWorkers = 0, vkApiWorkers = 0, recognizerWorkers = 0,
+        @Default int schedulerWorkers = 0,
+                userManagerWorkers = 0, imageFactoryWorkers = 0, vkApiWorkers = 0, recognizerWorkers = 0,
                 preloadedImagesCacheSize = 100, preloadInterval = 1_000_000;
-        @SerializedName("the-cat-api") @Builder.Default @NonNull TheCatApiCatImageFactory.Configuration theCatApiConfig
+
+        @SerializedName("redis-user-manager") @Default @NonNull RedisUserManager.Configuration redisUserManagerConfig
+                = RedisUserManager.Configuration.builder().build();
+
+        @SerializedName("the-cat-api") @Default @NonNull TheCatApiCatImageFactory.Configuration theCatApiConfig
                 = TheCatApiCatImageFactory.Configuration.builder().build();
-        @SerializedName("vk-api") @Builder.Default @NonNull SimpleVkCatsManager.Configuration vkApiConfig
+
+        @SerializedName("vk-api") @Default @NonNull SimpleVkCatsManager.Configuration vkApiConfig
                 = SimpleVkCatsManager.Configuration.builder()
                 .groupToken("1234567890abcdef1234567890abcdef")
                 .build();
-        @SerializedName("wit-ai") @Builder.Default @NonNull WitAiRecognizer.Configuration witAiConfig
+
+        @SerializedName("wit-ai") @Default @NonNull WitAiRecognizer.Configuration witAiConfig
                 = WitAiRecognizer.Configuration.builder()
                 .userToken("1234567890abcdef1234567890abcdef")
                 .build();
 
-        @SerializedName("vk-handler") @NonNull @Builder.Default File vkHandlerFile = new File("handler/vk.groovy");
+        @SerializedName("event-handler") @NonNull @Default File eventHandlerFile
+                = new File("scripts/event-handler.groovy");
+        @SerializedName("vk-handler") @NonNull @Default File vkHandlerFile
+                = new File("scripts/vk-handler.groovy");
     }
 }
