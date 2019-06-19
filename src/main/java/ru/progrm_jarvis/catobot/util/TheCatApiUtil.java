@@ -31,10 +31,14 @@ public class TheCatApiUtil {
      */
     public final int MIN_CATS_PER_REQUEST = 1, MAX_CATS_PER_REQUEST = 100;
 
+    public final String ROOT_API_ENDPOINT = "https://api.thecatapi.com/v1/";
+
     /**
      * Endpoint for HTTP-request for getting random cat images
      */
-    public final URI RANDOM_CAT_IMAGE_REQUEST_ENDPOINT = URI.create("https://api.thecatapi.com/v1/images/search");
+    public final URI
+            RANDOM_CAT_IMAGE_REQUEST_ENDPOINT = URI.create(ROOT_API_ENDPOINT + "images/search"),
+            UPLOAD_CAT_IMAGE_ENDPOINT = URI.create(ROOT_API_ENDPOINT + "images/upload");
 
     /**
      * Parsers the content of the specified data stream as a JSON-array of {@link TheCatApiCatImage}s.

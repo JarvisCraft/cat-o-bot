@@ -6,7 +6,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.entity.InputStreamEntity;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import ru.progrm_jarvis.catobot.image.TheCatApiCatImage;
@@ -14,7 +16,9 @@ import ru.progrm_jarvis.catobot.util.Images;
 import ru.progrm_jarvis.catobot.util.TheCatApiUtil;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Queue;
 import java.util.concurrent.CompletableFuture;
@@ -31,7 +35,8 @@ import static java.lang.Math.min;
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PROTECTED, makeFinal = true)
 public class TheCatApiCatImageFactory
-        implements CatImageFactory<TheCatApiCatImage, TheCatApiCatImageFactory.Configuration> {
+        implements CatImageFactory<TheCatApiCatImage, TheCatApiCatImageFactory.Configuration>,
+        CatImageSharer<TheCatApiCatImageFactory.Configuration> {
 
     /**
      * Default configuration to use whenever none is explicitly specified in methods
@@ -112,6 +117,32 @@ public class TheCatApiCatImageFactory
             }
 
             return nextImage;
+        }, executor);
+    }
+
+    @Override
+    @NotNull public CompletableFuture<Void> shareCatImage(@NonNull final Configuration configuration,
+                                                          @NonNull final InputStream imageInputStream) {
+        val config = configuration == null ? defaultConfiguration : configuration;
+        return CompletableFuture.supplyAsync(() -> {
+            // prepare request
+            final HttpPost postRequest;
+            postRequest = new HttpPost(TheCatApiUtil.UPLOAD_CAT_IMAGE_ENDPOINT);
+            postRequest.setEntity(new InputStreamEntity(imageInputStream));
+            val apiKey = config.getApiKey();
+            if (apiKey != null) postRequest.setHeader("x-api-key", apiKey);
+            postRequest.setHeader("User-Agent", "Cat'o'Bot");
+
+            try (val response = httpClient.execute(postRequest).getEntity().getContent()) {
+                log.debug(
+                        "Uploaded image, response:\n{}",
+                        String.join("\n", IOUtils.readLines(response, StandardCharsets.UTF_8))
+                );
+            } catch (final IOException e) {
+                throw new RuntimeException("An exception occurred while trying to upload a cat image", e);
+            }
+
+            return null; // because Void
         }, executor);
     }
 
