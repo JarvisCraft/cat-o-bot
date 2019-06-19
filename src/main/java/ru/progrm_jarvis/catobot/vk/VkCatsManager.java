@@ -2,6 +2,7 @@ package ru.progrm_jarvis.catobot.vk;
 
 import com.vk.api.sdk.client.VkApiClient;
 import com.vk.api.sdk.client.actors.GroupActor;
+import com.vk.api.sdk.exceptions.ClientException;
 import com.vk.api.sdk.objects.messages.AudioMessage;
 import lombok.NonNull;
 import org.jetbrains.annotations.Nullable;
@@ -30,6 +31,14 @@ public interface VkCatsManager extends AutoCloseable {
      * @return group-actor used by VK API client
      */
     GroupActor getGroupActor();
+
+    /**
+     * Sends a simple text message to the given peer.
+     *
+     * @param peerId message receiver
+     * @param text text to send
+     */
+    void sendMessage(final int peerId, final String text) throws ClientException;
 
     /**
      * Gets a random ID for a message to be sent to the peer.

@@ -69,6 +69,17 @@ public class SimpleVkCatsManager implements VkCatsManager {
     }
 
     @Override
+    @SneakyThrows({ClientException.class, ApiException.class})
+    public void sendMessage(final int peerId, final String text) {
+        client.messages()
+                .send(groupActor)
+                .peerId(peerId)
+                .randomId(getRandomMessageId(peerId))
+                .message(text)
+                .execute();
+    }
+
+    @Override
     @SneakyThrows(URISyntaxException.class)
     public Optional<InputStream> toMp3InputStream(final @NonNull AudioMessage audioMessage) {
         val url = audioMessage.getLinkMp3();
