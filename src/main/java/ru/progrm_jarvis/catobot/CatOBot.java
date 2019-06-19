@@ -31,6 +31,45 @@ public interface CatOBot extends Runnable, AutoCloseable {
      */
     Recognizer getRecognizer();
 
+    interface EventHandler {
+
+        static EventHandler getStub() {
+            return EventHandler.StubHolder.STUB;
+        }
+
+        default void onEnable() {}
+
+        default void onDisable() {}
+
+        default void handle(String eventType, Object event) {}
+
+        enum StubHolder implements EventHandler {
+            STUB {
+                @Override
+                public String toString() {
+                    return "EventHandler Stub";
+                }
+            }
+        }
+    }
+
+    interface CatOBotEventHandler extends AutoCloseable {
+
+        static CatOBotEventHandler getStub() {
+            return StubHolder.STUB;
+        }
+
+        default void onEnable() {}
+
+        default void onDisable() {}
+
+        default void close() {}
+
+        enum StubHolder implements CatOBotEventHandler {
+            STUB
+        }
+    }
+
     /**
      * An exception thrown whenever an attempt to shut down an already shut down bot happens.
      */
