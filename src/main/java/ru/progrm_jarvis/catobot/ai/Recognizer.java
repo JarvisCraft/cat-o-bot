@@ -12,7 +12,7 @@ import java.util.concurrent.CompletableFuture;
  *
  * @param <C> configuration type for API-method calls
  */
-public interface Recognizer<C> {
+public interface Recognizer<C> extends AutoCloseable {
 
     /**
      * Recognizes the specified user message.

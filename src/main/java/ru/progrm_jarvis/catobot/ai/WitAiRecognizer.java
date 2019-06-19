@@ -100,6 +100,11 @@ public class WitAiRecognizer implements Recognizer<WitAiRecognizer.Configuration
         }, executor);
     }
 
+    @Override
+    public void close() {
+        executor.shutdownNow();
+    }
+
     /**
      * Configuration of {@link WitAiRecognizer}.
      */
