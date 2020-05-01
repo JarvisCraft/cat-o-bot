@@ -5,26 +5,31 @@ import com.vk.api.sdk.client.VkApiClient;
 import com.vk.api.sdk.client.actors.GroupActor;
 import com.vk.api.sdk.exceptions.ApiException;
 import com.vk.api.sdk.exceptions.ClientException;
-import com.vk.api.sdk.exceptions.LongPollServerKeyExpiredException;
 import com.vk.api.sdk.httpclient.HttpTransportClient;
 import com.vk.api.sdk.objects.groups.LongPollServer;
+import com.vk.api.sdk.objects.messages.AudioMessage;
+import com.vk.api.sdk.objects.photos.responses.MessageUploadResponse;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.HttpClients;
 import org.apache.logging.log4j.core.util.JsonUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import ru.progrm_jarvis.catobot.image.CatImage;
-import ru.progrm_jarvis.catobot.util.CollectionUtil;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Optional;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
@@ -32,24 +37,70 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class SimpleVkCatsManager implements VkCatsManager {
 
     @NonNull Configuration configuration;
-    @NonNull ExecutorService executor;
-    @NonNull VkApiClient vk;
+    @NonNull ExecutorService pictureUploaderExecutor, longPollExecutor;
+    @NonNull @Getter VkApiClient client;
+    @NonNull HttpClient httpClient; // TODO: 17.05.2019 optimize 
     @NonNull CallbackApi longPollEventHandler;
-    @NonNull GroupActor groupActor;
+    @NonNull @Getter GroupActor groupActor;
 
     @NonNull AtomicBoolean longPollingSession;
 
     public SimpleVkCatsManager(@NonNull final Configuration configuration,
-                               @NonNull final ExecutorService executor,
                                @NonNull final CallbackApi longPollEventHandler) {
         this.configuration = configuration;
-        this.executor = executor;
+        pictureUploaderExecutor = Executors.newCachedThreadPool();
+        longPollExecutor = Executors.newSingleThreadExecutor();
         this.longPollEventHandler = longPollEventHandler;
 
-        vk = new VkApiClient(new HttpTransportClient());
+        httpClient = HttpClients.createDefault(); // FIXME: 17.05.2019
+        client = new VkApiClient(new HttpTransportClient());
         groupActor = new GroupActor(configuration.getGroupId(), configuration.getGroupToken());
 
         longPollingSession = new AtomicBoolean();
+    }
+
+    @Override
+    public int getRandomMessageId(final int peerId) {
+        return ThreadLocalRandom.current().nextInt();
+    }
+
+    @Override
+    @SneakyThrows({ClientException.class, ApiException.class})
+    public void sendMessage(final int peerId, @NonNull final String text) {
+        client.messages()
+                .send(groupActor)
+                .peerId(peerId)
+                .randomId(getRandomMessageId(peerId))
+                .message(text)
+                .execute();
+    }
+
+    @Override
+    @SneakyThrows({ClientException.class, ApiException.class})
+    public void replyToMessage(final int peerId, final int messageId, @NonNull final String text) {
+        client.messages()
+                .send(groupActor)
+                .peerId(peerId)
+                .replyTo(messageId)
+                .randomId(getRandomMessageId(peerId))
+                .message(text)
+                .execute();
+    }
+
+    @Override
+    @SneakyThrows(URISyntaxException.class)
+    public Optional<InputStream> toMp3InputStream(final @NonNull AudioMessage audioMessage) {
+        val url = audioMessage.getLinkMp3();
+
+        val request = new HttpGet(url.toURI());
+        //request.setHeader(audioMessage.getAccessKey());
+        try {
+            return Optional.ofNullable(httpClient.execute(request).getEntity().getContent());
+        } catch (final IOException e) {
+            log.warn("An exception occurred while trying to read audio-message");
+
+            return Optional.empty();
+        }
     }
 
     /**
@@ -58,48 +109,64 @@ public class SimpleVkCatsManager implements VkCatsManager {
      * @return long-poll server
      */
     protected LongPollServer getLongPollServer() throws ClientException, ApiException {
-        return vk.groups().getLongPollServer(groupActor, configuration.getGroupId()).execute();
+        return client.groups().getLongPollServer(groupActor, configuration.getGroupId()).execute();
     }
 
     @Override
     public void startLongPolling() {
         if (longPollingSession.compareAndSet(false, true)) {
             log.info("Starting long-polling");
-            executor.execute(() -> {
+            longPollExecutor.execute(() -> {
                 log.info("Started long-polling");
-                try {
-                    @NotNull String server, key;
-                    int ts;
-                    {
+
+                @NotNull String server, key;
+                int ts;
+                {
+                    // initially get long-polling server
+                    final LongPollServer longPollServer;
+                    try {
+                        longPollServer = getLongPollServer();
+                    } catch (final ApiException | ClientException e) {
+                        throw new RuntimeException(
+                                "An exception occurred while trying to set-up long-poll connection", e
+                        );
+                    }
+                    server = longPollServer.getServer();
+                    key = longPollServer.getKey();
+                    ts = Integer.parseInt(longPollServer.getTs());
+                }
+
+                while (longPollingSession.get()) {
+                    try {
+                        val response = client.longPoll().getEvents(server, key, ts)
+                                .waitTime(10)
+                                .execute();
+
+                        ts = response.getTs();
+
+                        log.debug("Received long-poll response: " + response.getUpdates());
+
+                        try {
+                            for (val update : response.getUpdates()) longPollEventHandler.parse(update);
+                        } catch (final Throwable e) {
+                            log.warn("An exception occurred while handling a long-poll event", e);
+                        }
+                    } catch (final ClientException | ApiException e) {
+                        log.debug("An exception occurred while long-polling, retrying", e);
+
                         // initially get long-polling server
-                        val longPollServer = getLongPollServer();
+                        final LongPollServer longPollServer;
+                        try {
+                            longPollServer = getLongPollServer();
+                        } catch (final ApiException | ClientException e2) {
+                            throw new RuntimeException(
+                                    "An exception occurred while trying to set-up long-poll connection", e
+                            );
+                        }
                         server = longPollServer.getServer();
                         key = longPollServer.getKey();
-                        ts = longPollServer.getTs();
+                        ts = Integer.parseInt(longPollServer.getTs());
                     }
-
-                    while (longPollingSession.get()) {
-                        try {
-                            val response = vk.longPoll().getEvents(server, key, ts)
-                                    .waitTime(10)
-                                    .execute();
-
-                            ts = response.getTs();
-
-                            log.debug("Received long-poll response: " + response.getUpdates());
-                            for (val update : response.getUpdates()) longPollEventHandler.parse(update);
-                        } catch (final LongPollServerKeyExpiredException e) {
-                            log.debug("Long-poll key has expired, getting new", e);
-
-                            // initially get long-polling server
-                            val longPollServer = getLongPollServer();
-                            server = longPollServer.getServer();
-                            key = longPollServer.getKey();
-                            ts = longPollServer.getTs();
-                        }
-                    }
-                } catch (final ApiException | ClientException e) {
-                    throw new RuntimeException(e);
                 }
             });
         }
@@ -111,49 +178,72 @@ public class SimpleVkCatsManager implements VkCatsManager {
     }
 
     @Override
-    public void sendCatsUnavailable(final int peerId, @Nullable final Integer repliedMessageId) {
-        CollectionUtil.getRandom(configuration.getMessages().getCatsUnavailable()).ifPresent(
-                message -> {
-                    try {
-                        val request = vk.messages().send(groupActor)
-                                .peerId(peerId)
-                                .message(message);
-                        if (repliedMessageId != null) request.replyTo(repliedMessageId);
+    public Optional<Throwable> sendCatImages(final int peerId,
+                              @Nullable final Integer repliedMessageId,
+                              @Nullable final String message,
+                              @NonNull final List<CompletableFuture<CatImage>> images) {
+        final URL photoUploadUrl;
+        try {
+            photoUploadUrl = client.photos().getMessagesUploadServer(groupActor)
+                    .peerId(peerId)
+                    .execute()
+                    .getUploadUrl();
+        } catch (final ApiException | ClientException e) {
+            log.warn("Unable to get photo-upload URL for storing sent cat-images", e);
+            return Optional.of(e);
+        }
 
-                        request.execute();
-                    } catch (final ClientException | ApiException e) {
-                        throw new RuntimeException(
-                                "An exception occurred while trying to send cats unavailability message", e
-                        );
+        // size of images array
+        val size = images.size();
+
+        val uploads = new ArrayList<MessageUploadResponse>(size);
+        val countdown = new CountDownLatch(size);
+        for (val image : images) image.whenCompleteAsync((catImage, e) -> {
+            try {
+                if (e != null) log.warn("An exception occurred while loading one of cat images", e);
+                else {
+                    final File tempFile;
+                    try {
+                        tempFile = File.createTempFile("tmp_cat_img", '.' + catImage.getType());
+                    } catch (final IOException ex) {
+                        log.warn("Unable to create temp-file for cat-image", ex);
+                        return;
+                    }
+                    try {
+                        tempFile.deleteOnExit();
+                        try {
+                            Files.write(tempFile.toPath(), catImage.getImage());
+                        } catch (final IOException ex) {
+                            log.warn("Unable to write to temp-file of cat-image", ex);
+                            return;
+                        }
+
+                        // upload the image
+                        try {
+                            uploads.add(client.upload().photoMessage(photoUploadUrl.toString(), tempFile).execute());
+                        } catch (final ApiException | ClientException ex) {
+                            log.warn("Unable to upload cat image to VK", ex);
+                        }
+                    } finally {
+                        //noinspection ResultOfMethodCallIgnored
+                        tempFile.delete();
                     }
                 }
-        );
+            } finally {
+                countdown.countDown();
+            }
+        }, pictureUploaderExecutor);
 
-    }
-
-    @Override
-    public void sendCatImages(final int peerId,
-                              @Nullable final Integer repliedMessageId,
-                              @NonNull final CatImage... images)
-            throws IOException, ClientException, ApiException {
-        val photoUploadUrl = vk.photos().getMessagesUploadServer(groupActor)
-                .peerId(peerId)
-                .execute()
-                .getUploadUrl();
+        try {
+            countdown.await();
+        } catch (final InterruptedException e) {
+            log.warn("Attempt to load cat images was interrupted", e);
+            return Optional.of(e);
+        }
 
         val script = new StringBuilder("var a;");
-        for (var i = 0; i < images.length; i++) {
-            val image = images[i];
-            //val tempFile = File.createTempFile("catobot_temp_img", null);
-            val tempFile = File.createTempFile("tmp_cat_img", '.' + image.getType());
-            tempFile.deleteOnExit();
-            Files.write(tempFile.toPath(), image.getImage());
-
-            // upload the image
-            val upload = vk.upload().photoMessage(photoUploadUrl.toString(), tempFile).execute();
-            //noinspection ResultOfMethodCallIgnored
-            tempFile.delete();
-
+        for (var i = 0; i < uploads.size(); i++) {
+            val upload = uploads.get(i);
             // store image in variable c and create attachment from it
             script.append("{var c=API.photos.saveMessagesPhoto({\"photo\":\"")
                     .append(upload.getPhoto().replace("\"", "\\\""))
@@ -165,27 +255,35 @@ public class SimpleVkCatsManager implements VkCatsManager {
         }
 
         script.append("return API.messages.send({\"attachment\":a,\"random_id\":")
-                .append(ThreadLocalRandom.current().nextInt() ^ Arrays.hashCode(images))
+                .append(getRandomMessageId(peerId))
                 .append(",\"peer_id\":").append(peerId);
 
-        CollectionUtil.getRandom(configuration.getMessages().getCatsSent()).ifPresent(message -> {
+        if (message != null) {
             script.append(",\"message\":\"");
             JsonUtils.quoteAsString(message, script); // TODO use of other dependency
             script.append('"');
-        });
+        }
         if (repliedMessageId != null) script.append(",\"reply_to\":").append(repliedMessageId);
 
         script.append("});");
 
         val code = script.toString();
         log.debug("Executing VKScript: {}`", code);
-        vk.execute().code(groupActor, script.toString()).execute();
+        try {
+            client.execute().code(groupActor, script.toString()).execute();
+        } catch (final ApiException | ClientException e) {
+            log.warn("Unable to send cat-images message", e);
+            return Optional.of(e);
+        }
+
+        return Optional.empty();
     }
 
     @Override
     public void close() {
         stopLongPolling();
-        executor.shutdown();
+        longPollExecutor.shutdownNow(); // first stop all incoming events
+        pictureUploaderExecutor.shutdownNow(); // disable sending of any photos
     }
 
     @Data
@@ -196,19 +294,5 @@ public class SimpleVkCatsManager implements VkCatsManager {
 
         int groupId;
         @NonNull String groupToken;
-        @Builder.Default @NonNull Messages messages = new Messages();
-
-        @Data
-        @Builder
-        @NoArgsConstructor
-        @AllArgsConstructor
-        public static class Messages {
-            @NonNull @Builder.Default List<String> catsSent = defaultMessages("Get your cats <3");
-            @NonNull @Builder.Default List<String> catsUnavailable = defaultMessages("Cats will be back soon");
-
-            protected static List<String> defaultMessages(@NonNull final String... messages) {
-                return new ArrayList<>(Arrays.asList(messages));
-            }
-        }
     }
 }
