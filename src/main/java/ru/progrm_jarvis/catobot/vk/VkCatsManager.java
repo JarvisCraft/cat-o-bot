@@ -38,7 +38,16 @@ public interface VkCatsManager extends AutoCloseable {
      * @param peerId message receiver
      * @param text text to send
      */
-    void sendMessage(final int peerId, final String text) throws ClientException;
+    void sendMessage(int peerId, @NonNull String text) throws ClientException;
+
+    /**
+     * Sends a simple text message to the given peer.
+     *
+     * @param peerId message receiver
+     * @param messageId  message to which the one sent is a reply
+     * @param text text to send
+     */
+    void replyToMessage(int peerId, int messageId, @NonNull String text) throws ClientException;
 
     /**
      * Gets a random ID for a message to be sent to the peer.
@@ -69,12 +78,16 @@ public interface VkCatsManager extends AutoCloseable {
     void stopLongPolling();
 
     /**
-     * Send a message informing that cats are currently unavailable to the peer.
+     * Sends cat images to the specified peer.
      *
      * @param peerId receiver of the message
      * @param repliedMessageId ID of a message which this one replies to
+     * @param message message to send
+     * @param images cat images to send
+     * @return optional throwable in case it was thrown
      */
-    void sendCatsUnavailable(int peerId, @Nullable Integer repliedMessageId);
+    Optional<Throwable> sendCatImages(int peerId, @Nullable Integer repliedMessageId, @Nullable String message,
+                                          @NonNull List<CompletableFuture<CatImage>> images);
 
     /**
      * Sends cat images to the specified peer.
@@ -82,7 +95,10 @@ public interface VkCatsManager extends AutoCloseable {
      * @param peerId receiver of the message
      * @param repliedMessageId ID of a message which this one replies to
      * @param images cat images to send
+     * @return optional throwable in case it was thrown
      */
-    void sendCatImages(int peerId, @Nullable Integer repliedMessageId,
-                       @NonNull List<CompletableFuture<CatImage>> images);
+    default Optional<Throwable> sendCatImages(int peerId, @Nullable Integer repliedMessageId,
+                                             @NonNull List<CompletableFuture<CatImage>> images) {
+        return sendCatImages(peerId, repliedMessageId, null, images);
+    }
 }

@@ -2,6 +2,7 @@ package ru.progrm_jarvis.catobot;
 
 import lombok.NoArgsConstructor;
 import ru.progrm_jarvis.catobot.ai.Recognizer;
+import ru.progrm_jarvis.catobot.image.factory.CatImageSharer;
 import ru.progrm_jarvis.catobot.image.repository.CatImageRepository;
 import ru.progrm_jarvis.catobot.subscription.UserManager;
 import ru.progrm_jarvis.catobot.vk.VkCatsManager;
@@ -33,6 +34,8 @@ public interface CatOBot extends Runnable, AutoCloseable {
      * @return user-manager of this bot
      */
     UserManager getUserManager();
+
+    CatImageSharer getCatImageSharer();
 
     /**
      * Gets {@link CatImageRepository} of this bot.

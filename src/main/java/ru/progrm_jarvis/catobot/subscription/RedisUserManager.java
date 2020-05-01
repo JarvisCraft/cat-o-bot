@@ -6,7 +6,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import redis.clients.jedis.HostAndPort;
-import redis.clients.jedis.JedisCluster;
+import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPoolConfig;
 
 import java.util.Collections;
@@ -22,25 +22,25 @@ public class RedisUserManager implements UserManager {
     @NonNull protected static final Gson GSON = new Gson();
 
     @NonNull ExecutorService executor;
-    @NonNull JedisCluster cluster;
+    @NonNull Jedis jedis;
     @NonNull String userPrefix;
 
     public RedisUserManager(@NonNull final ExecutorService executor, @NonNull final Configuration configuration) {
         this(
                 executor,
-                new JedisCluster(configuration.getHosts(), configuration.getPoolConfig()),
+                new Jedis(configuration.getHosts().iterator().next()),
                 configuration.getPrefix()
         );
     }
 
     @Override
     public CompletableFuture<Boolean> isPresent(final String userKey) {
-        return CompletableFuture.supplyAsync(() -> cluster.exists(userKey), executor);
+        return CompletableFuture.supplyAsync(() -> jedis.exists(userKey), executor);
     }
 
     @Override
     public void store(@NonNull final User user) {
-        cluster.set(user.getKey(), GSON.toJson(user.getMetadata()));
+        jedis.set(user.getKey(), GSON.toJson(user.getMetadata()));
     }
 
     @Override
@@ -48,7 +48,7 @@ public class RedisUserManager implements UserManager {
         return CompletableFuture.supplyAsync(() -> {
             val key = userPrefix + userKey;
 
-            val stored = cluster.get(key);
+            val stored = jedis.get(key);
             if (stored == null) {
                 val user = new SimpleUser(this, userKey, new JsonObject());
                 store(user);
@@ -64,7 +64,7 @@ public class RedisUserManager implements UserManager {
 
     @Override
     public void unstore(@NonNull final String userKey) {
-        executor.submit(() -> cluster.del(userPrefix + userKey));
+        executor.submit(() -> jedis.del(userPrefix + userKey));
     }
 
     @Override

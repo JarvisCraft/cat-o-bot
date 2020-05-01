@@ -14,6 +14,7 @@ import org.apache.http.impl.client.HttpClients;
 import ru.progrm_jarvis.catobot.ai.Recognizer;
 import ru.progrm_jarvis.catobot.ai.WitAiRecognizer;
 import ru.progrm_jarvis.catobot.image.TheCatApiCatImage;
+import ru.progrm_jarvis.catobot.image.factory.CatImageSharer;
 import ru.progrm_jarvis.catobot.image.factory.TheCatApiCatImageFactory;
 import ru.progrm_jarvis.catobot.image.repository.CatImageRepository;
 import ru.progrm_jarvis.catobot.image.repository.PreLoadingCatImageRepository;
@@ -48,6 +49,7 @@ public class SimpleCatOBot implements CatOBot {
 
     @NonNull @Getter ScheduledExecutorService scheduler;
     @NonNull @Getter UserManager userManager;
+    @NonNull @Getter CatImageSharer catImageSharer;
     @NonNull @Getter CatImageRepository<TheCatApiCatImage, TheCatApiCatImageFactory.Configuration> catImages;
     @NonNull @Getter VkCatsManager vk;
     @NonNull @Getter Recognizer recognizer;
@@ -91,12 +93,15 @@ public class SimpleCatOBot implements CatOBot {
         final Function<CatOBot, CallbackApi> vkCallbackHandlerFactory = loadScript(config.getVkHandlerFile());
         log.info("Loaded callback-api handler {}", vkCallbackHandlerFactory);
 
+        val theCatApiCatImageFactory = new TheCatApiCatImageFactory(
+                config.getTheCatApiConfig(), HttpClients.createDefault(),
+                createExecutorService(config.getImageFactoryWorkers(), true)
+        );
+        catImageSharer = theCatApiCatImageFactory;
         log.info("Initializing cat images repository...");
         catImages = new PreLoadingCatImageRepository<>(
-                new TheCatApiCatImageFactory(
-                        config.getTheCatApiConfig(), HttpClients.createDefault(),
-                        createExecutorService(config.getImageFactoryWorkers(), true)
-                ), null, config.getPreloadedImagesCacheSize(), config.getPreloadInterval());
+                theCatApiCatImageFactory, null, config.getPreloadedImagesCacheSize(), config.getPreloadInterval()
+        );
         log.info("Initialized cat images repository: {}", catImages);
 
         log.info("Initializing recognizer...");
@@ -108,10 +113,7 @@ public class SimpleCatOBot implements CatOBot {
         log.info("Initialized recognizer: {}", recognizer);
 
         log.info("Initializing VK-manager...");
-        vk = new SimpleVkCatsManager(
-                config.getVkApiConfig(), createExecutorService(config.getVkApiWorkers(), true),
-                vkCallbackHandlerFactory.apply(this)
-        );
+        vk = new SimpleVkCatsManager(config.getVkApiConfig(), vkCallbackHandlerFactory.apply(this));
         log.info("Initialized VK-manager: {}", vk);
 
         shutdown = new AtomicBoolean();
@@ -249,8 +251,7 @@ public class SimpleCatOBot implements CatOBot {
      *
      * @throws IllegalArgumentException if the amount of workers is negative
      */
-    protected static ScheduledExecutorService createScheduledExecutorService(final int workers,
-                                                                    boolean daemon) {
+    protected static ScheduledExecutorService createScheduledExecutorService(final int workers, boolean daemon) {
         if (workers < 0) throw new IllegalArgumentException("Number of workers cannot be negative");
 
         final ThreadFactory threadFactory;
@@ -275,7 +276,7 @@ public class SimpleCatOBot implements CatOBot {
 
         boolean useSsl;
         @Default int schedulerWorkers = 0,
-                userManagerWorkers = 0, imageFactoryWorkers = 0, vkApiWorkers = 0, recognizerWorkers = 0,
+                userManagerWorkers = 0, imageFactoryWorkers = 0, recognizerWorkers = 0,
                 preloadedImagesCacheSize = 100, preloadInterval = 1_000_000;
 
         @SerializedName("redis-user-manager") @Default @NonNull RedisUserManager.Configuration redisUserManagerConfig
